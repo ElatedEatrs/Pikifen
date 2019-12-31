@@ -103,7 +103,7 @@ void animation_editor::center_camera_on_sprite_bitmap() {
         center_camera(point(bmp_x, bmp_y), point(bmp_x + bmp_w, bmp_y + bmp_h));
     } else {
         cam_zoom = 1.0f;
-        cam_pos = point();
+        cam_pos[pnum] = point();
     }
 }
 
@@ -406,7 +406,7 @@ void animation_editor::load_animation_database(const bool update_history) {
     if(state == EDITOR_STATE_SPRITE_BITMAP) {
         //Ideally, states would be handled by a state machine, and this
         //logic would be placed in the sprite bitmap state's "on exit" code...
-        cam_pos = pre_sprite_bmp_cam_pos;
+        cam_pos[pnum] = pre_sprite_bmp_cam_pos;
         cam_zoom = pre_sprite_bmp_cam_zoom;
     }
     
@@ -443,7 +443,7 @@ void animation_editor::load_animation_database(const bool update_history) {
     frm_hitboxes->hide();
     frm_top->hide();
     
-    cam_pos.x = cam_pos.y = 0;
+    cam_pos[pnum].x = cam_pos[pnum].y = 0;
     cam_zoom = 1;
     
     //Find the most popular file name to suggest for new sprites.

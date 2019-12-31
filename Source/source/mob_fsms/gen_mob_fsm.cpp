@@ -104,18 +104,47 @@ void gen_mob_fsm::fall_down_pit(mob* m, void* info1, void* info2) {
  */
 void gen_mob_fsm::handle_carrier_added(mob* m, void* info1, void* info2) {
     pikmin* pik_ptr = (pikmin*) info1;
-    
-    m->carry_info->spot_info[pik_ptr->carrying_spot].pik_ptr = pik_ptr;
-    m->carry_info->spot_info[pik_ptr->carrying_spot].state = CARRY_SPOT_USED;
-    m->carry_info->cur_carrying_strength += pik_ptr->pik_type->carry_strength;
-    m->carry_info->cur_n_carriers++;
-    
-    m->chase_speed = m->carry_info->get_speed();
-    
-    m->calculate_carrying_destination(
-        pik_ptr, NULL,
-        &m->carry_info->intended_mob, &m->carry_info->intended_point
-    );
+	if (VERSUS_ON == true) {
+		if (m->carry_info->cur_team == 17 || m->carry_info->cur_team == INVALID || pik_ptr->team == m->carry_info->cur_team) {
+			m->carry_info->cur_team = pik_ptr->team;
+			m->carry_info->spot_info[pik_ptr->carrying_spot].pik_ptr = pik_ptr;
+			m->carry_info->spot_info[pik_ptr->carrying_spot].state = CARRY_SPOT_USED;
+			m->carry_info->cur_carrying_strength += pik_ptr->pik_type->carry_strength;
+			m->carry_info->cur_n_carriers++;
+
+			m->chase_speed = m->carry_info->get_speed();
+
+			m->calculate_carrying_destination(
+				pik_ptr, NULL,
+				&m->carry_info->intended_mob, &m->carry_info->intended_point
+			);
+		}
+		else {
+			for (size_t p = 0; p < m->carry_info->spot_info.size(); ++p) {
+				if (m->carry_info->spot_info[p].state != CARRY_SPOT_FREE) {
+					mob* piki = m->carry_info->spot_info[p].pik_ptr;
+					m->carry_info->spot_info[p].pik_ptr->fsm.run_event(
+						MOB_EVENT_FOCUSED_MOB_UNAVAILABLE
+					);
+					piki->chase(angle_to_coordinates(get_angle(m->pos, piki->pos), 10), NULL, false);
+				}
+			}
+			m->chase_speed = 0;
+		}
+	}else {
+		m->carry_info->spot_info[pik_ptr->carrying_spot].pik_ptr = pik_ptr;
+		m->carry_info->spot_info[pik_ptr->carrying_spot].state = CARRY_SPOT_USED;
+		m->carry_info->cur_carrying_strength += pik_ptr->pik_type->carry_strength;
+		m->carry_info->cur_n_carriers++;
+
+		m->chase_speed = m->carry_info->get_speed();
+
+		m->calculate_carrying_destination(
+			pik_ptr, NULL,
+			&m->carry_info->intended_mob, &m->carry_info->intended_point
+		);
+
+	}
 }
 
 
@@ -166,14 +195,27 @@ void gen_mob_fsm::carry_become_stuck(mob* m, void* info1, void* info2) {
  * or update its path.
  */
 void gen_mob_fsm::carry_begin_move(mob* m, void* info1, void* info2) {
-    m->carry_info->is_moving = true;
-    
-    if(m->carry_info->intended_mob == NULL) {
-        m->fsm.run_event(MOB_EVENT_CARRY_STUCK);
-        return;
-    }
-    
-    float target_distance = 3.0f;
+	m->carry_info->is_moving = true;
+
+	if (m->carry_info->intended_mob == NULL) {
+		m->fsm.run_event(MOB_EVENT_CARRY_STUCK);
+		return;
+	}    
+	float target_distance = 3.0f;
+	if (VERSUS_ON == true){
+		m->follow_path(
+			m->carry_info->intended_point, true,
+			m->carry_info->get_speed(), target_distance
+		);
+
+		m->path_info->target_point = m->carry_info->intended_point;
+
+		if (m->path_info->path.empty() && !m->path_info->go_straight) {
+			m->fsm.run_event(MOB_EVENT_CARRY_STUCK);
+		}
+	return;
+	}
+
     if(m->carry_info->destination == CARRY_DESTINATION_SHIP) {
         //Because the ship's beam can be offset, and because
         //the ship is normally in the way, let's consider a
@@ -219,6 +261,7 @@ void gen_mob_fsm::carry_stop_move(mob* m, void* info1, void* info2) {
  */
 void gen_mob_fsm::check_carry_begin(mob* m, void* info1, void* info2) {
     if(m->carry_info->cur_carrying_strength >= m->type->weight) {
+
         m->fsm.run_event(MOB_EVENT_CARRY_BEGIN_MOVE);
     }
 }
@@ -254,11 +297,27 @@ void gen_mob_fsm::start_being_delivered(mob* m, void* info1, void* info2) {
             p_ptr->fsm.run_event(MOB_EVENT_FINISHED_CARRYING);
         }
     }
-    
+	bool deliver = true;
     m->focus_on_mob(m->carry_info->intended_mob);
-    m->tangible = false;
-    m->become_uncarriable();
-    m->set_timer(DELIVERY_SUCK_TIME);
+	m->tangible = (!m->carry_info->intended_mob);
+	if (m->team == MOB_TEAM_ALLIES1 && m->carry_info->intended_mob->team == MOB_TEAM_PLAYER_1) {
+		m->tangible = true;
+		deliver = false;
+	}
+	else	if (m->team == MOB_TEAM_ALLIES2 && m->carry_info->intended_mob->team == MOB_TEAM_PLAYER_2) {
+		m->tangible = true;
+		deliver = false;
+	}else 	if (m->team == MOB_TEAM_ALLIES3 && m->carry_info->intended_mob->team == MOB_TEAM_PLAYER_3) {
+		m->tangible = true;
+		deliver = false;
+	} else 	if (m->team == MOB_TEAM_ALLIES4 && m->carry_info->intended_mob->team == MOB_TEAM_PLAYER_4) {
+		m->tangible = true;
+		deliver = false;
+	}
+	if (deliver == true) {
+		m->become_uncarriable();
+		m->set_timer(DELIVERY_SUCK_TIME);
+	}
 }
 
 

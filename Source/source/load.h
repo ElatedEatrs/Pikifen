@@ -19,12 +19,16 @@
 #include "misc_structs.h"
 
 using namespace std;
-
-
+void load_sectors_by_day();
+void load_day(
+	const string &name, const bool load_for_editor, const bool from_backup, const string &day
+);
+void load_mobs_from_flags(const string &name, const bool load_for_editor,
+	const bool from_backup,
+	const string &flag);
 void load_area(
     const string &name, const bool load_for_editor, const bool from_backup
 );
-
 void load_area_textures();
 void load_asset_file_names();
 ALLEGRO_BITMAP* load_bmp(

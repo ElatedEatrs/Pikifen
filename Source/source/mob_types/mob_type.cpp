@@ -232,7 +232,6 @@ void load_mob_types(mob_category* category, bool load_resources) {
         load_mob_type_from_file(
             mt, file, load_resources, category->folder + "/" + types[t]
         );
-        
         category->register_type(mt);
         
         mt->folder_name = types[t];
@@ -338,7 +337,6 @@ void load_mob_type_from_file(
                 s2f(vul_node->value) / 100;
         }
     }
-    
     data_node* reaches_node = file.get_child_by_name("reaches");
     size_t n_reaches = reaches_node->get_nr_of_children();
     for(size_t r = 0; r < n_reaches; ++r) {

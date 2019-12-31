@@ -113,6 +113,7 @@ public:
     bool is_tool_primed_for_whistle;
     //Did the Pikmin's last attack cause zero damage?
     bool was_last_hit_dud;
+	bool is_safe;
     //How many hits in a row have done no damage.
     unsigned char consecutive_dud_hits;
     

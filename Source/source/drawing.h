@@ -47,6 +47,16 @@ void draw_bitmap_in_box(
     const point &box_size, const float angle = 0,
     const ALLEGRO_COLOR &tint = al_map_rgb(255, 255, 255)
 );
+void draw_bitmap_with_color(
+	ALLEGRO_BITMAP* bmp, const point &center,
+	const point &size, const float angle = 0,
+	const ALLEGRO_COLOR &tint = al_map_rgb(255, 255, 255)
+);
+void draw_bitmap_with_color_in_box(
+	ALLEGRO_BITMAP* bmp, const point &center,
+	const point &box_size, const float angle = 0,
+	const ALLEGRO_COLOR &tint = al_map_rgb(255, 255, 255)
+);
 void draw_bitmap_with_effects(
     ALLEGRO_BITMAP* bmp, const point &center,
     const point &size, const float angle,

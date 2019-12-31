@@ -21,7 +21,7 @@ pellet::pellet(const point &pos, pellet_type* type, const float angle) :
     pel_type(type) {
     
     become_carriable(CARRY_DESTINATION_ONION);
-    
+ 
     set_animation(ANIM_IDLING);
 }
 

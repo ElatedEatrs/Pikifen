@@ -8,12 +8,13 @@
  * Bouncer finite state machine logic.
  */
 
-#include "bouncer_fsm.h"
 #include <algorithm>
+
+#include "bouncer_fsm.h"
+
 #include "../functions.h"
 #include "../mobs/bouncer.h"
 #include "../utils/string_utils.h"
-
 
 /* ----------------------------------------------------------------------------
  * Creates the finite state machine for the bouncer's logic.

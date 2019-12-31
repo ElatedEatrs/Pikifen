@@ -69,8 +69,9 @@ private:
     
     menu_checkbox* fullscreen_widget;
     menu_text* resolution_widget;
+	menu_text* playernum_widget;
     menu_text* warning_widget;
-    
+	void change_playernumber(const signed int step);
     void change_resolution(const signed int step);
     void go_to_controls();
     void update();

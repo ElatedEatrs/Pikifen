@@ -31,7 +31,7 @@ public:
 
     ship_type* shi_type;
     point beam_final_pos;
-    
+	float pokos;
     ship(const point &pos, ship_type* type, float angle);
     
     virtual void draw_mob(bitmap_effect_manager* effect_manager = NULL);

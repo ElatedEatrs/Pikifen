@@ -125,7 +125,7 @@ void onion::spew() {
         randomf(-ONION_SPEW_H_SPEED_DEVIATION, ONION_SPEW_H_SPEED_DEVIATION);
     spew_pikmin_seed(
         pos, z + ONION_NEW_SEED_Z_OFFSET, oni_type->pik_type,
-        next_spew_angle, horizontal_strength, ONION_SPEW_V_SPEED
+        next_spew_angle, horizontal_strength, ONION_SPEW_V_SPEED, this
     );
     
     next_spew_angle += ONION_SPEW_ANGLE_SHIFT;
@@ -138,13 +138,13 @@ void onion::spew() {
  * Stows away a Pikmin in the current leader's group, if possible.
  * Gives priority to the lower maturities.
  */
-void onion::stow_pikmin() {
+void onion::stow_pikmin(size_t playee) {
     //Find a Pikmin of that type, preferring lower maturities.
     pikmin* pik_to_stow = NULL;
     size_t maturity = 0;
     for(; maturity < N_MATURITIES; ++maturity) {
-        for(size_t p = 0; p < cur_leader_ptr->group->members.size(); ++p) {
-            mob* mob_ptr = cur_leader_ptr->group->members[p];
+        for(size_t p = 0; p < cur_leader_ptrs[playee]->group->members.size(); ++p) {
+            mob* mob_ptr = cur_leader_ptrs[playee]->group->members[p];
             if(mob_ptr->type->category->id != MOB_CATEGORY_PIKMIN) {
                 continue;
             }
@@ -172,8 +172,8 @@ void onion::stow_pikmin() {
  * Ticks some logic specific to Onions.
  */
 void onion::tick_class_specifics() {
-    for(size_t o = 0; o < onions.size(); ++o) {
-        onion* o_ptr = onions[o];
+    for(size_t p = 0; p < onions.size(); ++p) {
+        onion* o_ptr = onions[p];
         
         if(o_ptr->spew_queue != 0) {
         
@@ -186,8 +186,8 @@ void onion::tick_class_specifics() {
         
         if(
             bbox_check(
-                cur_leader_ptr->pos, o_ptr->pos,
-                cur_leader_ptr->type->radius + o_ptr->type->radius * 3
+                cur_leader_ptrs[pnum]->pos, o_ptr->pos,
+                cur_leader_ptrs[pnum]->type->radius + o_ptr->type->radius * 3
             )
         ) {
             final_alpha = ONION_SEETHROUGH_ALPHA;
@@ -195,8 +195,8 @@ void onion::tick_class_specifics() {
         
         if(
             bbox_check(
-                leader_cursor_w, o_ptr->pos,
-                cur_leader_ptr->type->radius + o_ptr->type->radius * 3
+                leader_cursor_ws[pnum], o_ptr->pos,
+                cur_leader_ptrs[pnum]->type->radius + o_ptr->type->radius * 3
             )
         ) {
             final_alpha = ONION_SEETHROUGH_ALPHA;

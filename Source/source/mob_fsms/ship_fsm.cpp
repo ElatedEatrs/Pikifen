@@ -49,12 +49,11 @@ void ship_fsm::create_fsm(mob_type* typ) {
  */
 void ship_fsm::receive_mob(mob* m, void* info1, void* info2) {
     engine_assert(info1 != NULL, m->print_state_history());
-    
     mob* delivery = (mob*) info1;
     ship* s_ptr = (ship*) m;
-    
+   
     if(delivery->type->category->id == MOB_CATEGORY_TREASURES) {
-        //TODO
+		s_ptr->pokos += ((treasure*)delivery)->tre_type->value;
     } else if(delivery->type->category->id == MOB_CATEGORY_RESOURCES) {
         resource* r_ptr = (resource*) delivery;
         if(

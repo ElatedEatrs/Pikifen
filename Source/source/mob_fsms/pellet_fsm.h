@@ -20,6 +20,7 @@ namespace pellet_fsm {
 void create_fsm(mob_type* typ);
 
 void stand_still(mob* m, void* info1, void* info2);
+void stopp(mob* m, void* info1, void* info2);
 }
 
 #endif //ifndef PELLET_FSM_INCLUDED

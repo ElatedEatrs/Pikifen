@@ -45,12 +45,48 @@ void onion_fsm::create_fsm(mob_type* typ) {
  * info1: Pointer to the mob.
  */
 void onion_fsm::receive_mob(mob* m, void* info1, void* info2) {
-    engine_assert(info1 != NULL, m->print_state_history());
-    
-    mob* delivery = (mob*) info1;
-    onion* o_ptr = (onion*) m;
-    size_t seeds = 0;
-    
+	engine_assert(info1 != NULL, m->print_state_history());
+
+	mob* delivery = (mob*)info1;
+	onion* o_ptr = (onion*)m;
+	size_t seeds = 0;
+	if (VERSUS_ON == true) {
+
+		size_t teamnumber = 0;
+		bool is_marble = false;
+		for (size_t o = 0; o < marbles.size(); ++o) {
+			if (delivery->type == marbles[o]->type)is_marble = true;
+		}
+
+		if (o_ptr->team == MOB_TEAM_PLAYER_1) {
+			teamnumber = 0;
+		}
+		else	if (o_ptr->team == MOB_TEAM_PLAYER_2) {
+			teamnumber = 1;
+		}
+		else if (o_ptr->team == MOB_TEAM_PLAYER_3) {
+			teamnumber = 2;
+		}
+		else if (o_ptr->team == MOB_TEAM_PLAYER_4) {
+			teamnumber = 3;
+		}
+
+		if (delivery->team == MOB_TEAM_JERRY&&is_marble == true) {
+
+			playerpts[teamnumber] -= 1;
+		}
+		else if (delivery->team == MOB_TEAM_JURY && is_marble == true) {
+			playerpts[teamnumber] += 1;
+		}
+
+
+		if ((teamnumber == 0 && delivery->team == MOB_TEAM_ALLIES1) ||
+			(teamnumber == 1 && delivery->team == MOB_TEAM_ALLIES2) ||
+			(teamnumber == 2 && delivery->team == MOB_TEAM_ALLIES3) ||
+			(teamnumber == 3 && delivery->team == MOB_TEAM_ALLIES4)) {
+			return;
+		}
+	}
     if(delivery->type->category->id == MOB_CATEGORY_ENEMIES) {
         seeds = ((enemy*) delivery)->ene_type->pikmin_seeds;
     } else if(delivery->type->category->id == MOB_CATEGORY_PELLETS) {

@@ -567,7 +567,7 @@ void area_editor::clear_current_area() {
     mob_to_gui();
     tools_to_gui();
     
-    cam_pos = point();
+    cam_pos[pnum] = point();
     cam_zoom = 1.0f;
     show_cross_section = false;
     show_cross_section_grid = false;
@@ -757,27 +757,48 @@ void area_editor::create_area() {
 void area_editor::create_new_from_picker(
     const size_t picker_id, const string &name
 ) {
-    string new_area_path =
-        AREAS_FOLDER_PATH + "/" + name;
-    ALLEGRO_FS_ENTRY* new_area_folder_entry =
-        al_create_fs_entry(new_area_path.c_str());
-        
-    if(al_fs_entry_exists(new_area_folder_entry)) {
-        //Already exists, just load it.
-        cur_area_name = name;
-        area_editor::load_area(false);
-    } else {
-        //Create a new area.
-        cur_area_name = name;
-        create_area();
-    }
-    
-    al_destroy_fs_entry(new_area_folder_entry);
-    
-    state = EDITOR_STATE_MAIN;
-    emit_status_bar_message("Created new area successfully.", false);
-    frm_toolbar->show();
-    change_to_right_frame();
+	if (picker_id == PICKER_LOAD_DAY) {
+		cur_day = name;
+		string new_area_path =
+			AREAS_FOLDER_PATH + "/" + cur_area_name + "/" + name;
+		ALLEGRO_FS_ENTRY* new_area_folder_entry =
+			al_create_fs_entry(new_area_path.c_str());
+
+		if (al_fs_entry_exists(new_area_folder_entry)) {
+			//Already exists, just load it.
+			area_editor::load_day(name,true);
+		}
+		state = EDITOR_STATE_MOBS;
+		emit_status_bar_message("Created new area successfully.", false);
+		frm_toolbar->show();
+		change_to_right_frame();
+
+		al_destroy_fs_entry(new_area_folder_entry);
+	}
+	else {
+		string new_area_path =
+			AREAS_FOLDER_PATH + "/" + name;
+		ALLEGRO_FS_ENTRY* new_area_folder_entry =
+			al_create_fs_entry(new_area_path.c_str());
+
+		if (al_fs_entry_exists(new_area_folder_entry)) {
+			//Already exists, just load it.
+			cur_area_name = name;
+			area_editor::load_area(false);
+		}
+		else {
+			//Create a new area.
+			cur_area_name = name;
+			create_area();
+		}
+
+		al_destroy_fs_entry(new_area_folder_entry);
+
+		state = EDITOR_STATE_MAIN;
+		emit_status_bar_message("Created new area successfully.", false);
+		frm_toolbar->show();
+		change_to_right_frame();
+	}
 }
 
 
@@ -2074,20 +2095,20 @@ unordered_set<sector*> area_editor::get_affected_sectors(
 void area_editor::get_clicked_layout_element(
     vertex** clicked_vertex, edge** clicked_edge, sector** clicked_sector
 ) {
-    *clicked_vertex = get_vertex_under_point(mouse_cursor_w);
+    *clicked_vertex = get_vertex_under_point(mouse_cursor_w[pnum]);
     *clicked_edge = NULL;
     *clicked_sector = NULL;
     
     if(*clicked_vertex) return;
     
     if(selection_filter != SELECTION_FILTER_VERTEXES) {
-        *clicked_edge = get_edge_under_point(mouse_cursor_w);
+        *clicked_edge = get_edge_under_point(mouse_cursor_w[pnum]);
     }
     
     if(*clicked_edge) return;
     
     if(selection_filter == SELECTION_FILTER_SECTORS) {
-        *clicked_sector = get_sector_under_point(mouse_cursor_w);
+        *clicked_sector = get_sector_under_point(mouse_cursor_w[pnum]);
     }
 }
 
@@ -2483,7 +2504,9 @@ void area_editor::homogenize_selected_sectors() {
         update_sector_texture(*s, base->texture_info.file_name);
     }
 }
-
+void area_editor::load_day(const string name,const bool from_backup) {
+	::load_day(cur_area_name, true,from_backup, name);
+}
 
 /* ----------------------------------------------------------------------------
  * Load the area from the disk.
@@ -2493,14 +2516,7 @@ void area_editor::load_area(const bool from_backup) {
     clear_current_area();
     
     ::load_area(cur_area_name, true, from_backup);
-	linkid = 0;
-	for (size_t m = 0; m < cur_area_data.mob_generators.size(); ++m) {
-		mob_gen* m_ptr = cur_area_data.mob_generators[m];
-		int temp = m_ptr->lid;
-		if (linkid < temp) {
-			linkid = temp;
-		}
-	}
+
     //Calculate texture suggestions.
     map<string, size_t> texture_uses_map;
     vector<pair<string, size_t> > texture_uses_vector;
@@ -2534,13 +2550,18 @@ void area_editor::load_area(const bool from_backup) {
     update_main_frame();
     
     made_new_changes = false;
-    
+	cur_day = "0";
+	string new_area_path =
+		AREAS_FOLDER_PATH + "/" + cur_area_name + "/" + cur_day;
+	ALLEGRO_FS_ENTRY* new_area_folder_entry =
+		al_create_fs_entry(new_area_path.c_str());
+	al_destroy_fs_entry(new_area_folder_entry);
     clear_undo_history();
     update_undo_history();
     enable_widget(frm_toolbar->widgets["but_reload"]);
     
     cam_zoom = 1.0f;
-    cam_pos = point();
+    cam_pos[pnum] = point();
     
     emit_status_bar_message("Loaded successfully.", false);
 }
@@ -3083,89 +3104,49 @@ bool area_editor::save_area(const bool to_backup) {
     }
     
     //Mobs.
-	data_node* mobs_node = new data_node("mobs", "");
-	data_node* onions_node = new data_node("onions", "");
-	int id = 0;
-	int lig = 0;
-
-	for (size_t m = 0; m < cur_area_data.mob_generators.size(); ++m) {
-		mob_gen* m_ptr = cur_area_data.mob_generators[m];
-		int temp = m_ptr->lid;
-		if (lig < temp) {
-			lig = temp;
-		}
-	}
-	vector<int> group_amounts;
-	size_t n_groups = lig;
-	for (size_t s = 0; s <= n_groups; ++s) {
-		group_amounts.push_back(0);
-	}
-	for (size_t m = 0; m < cur_area_data.mob_generators.size(); ++m) {
-		mob_gen* m_ptr = cur_area_data.mob_generators[m];
-		int temp = m_ptr->lid;
-		if (group_amounts[temp] != 0) {
-			group_amounts[temp] += 1;
-
-		}
-		else {
-			group_amounts[temp] = 1;
-		}
-
-
-	}
-	vector<bool>groups;
-
-	int groupsmissing = 0;
-	for (size_t s = 0; s < group_amounts.size(); ++s) {
-		if (group_amounts[s] == 0) {
-			groupsmissing += 1;
-
-			for (size_t m = 0; m < cur_area_data.mob_generators.size(); ++m) {
-				mob_gen* m_ptr = cur_area_data.mob_generators[m];
-				if (m_ptr->lid > s - groupsmissing) {
-					m_ptr->lid += -1;
-
-				}
-			}
-		}
-		else {
-			mobs_node->add(new data_node("mobgroupV" + i2s(s - groupsmissing), ""));
-		}
-	}
-	data_node* groupAmount = new data_node("ga", i2s(lig));
-	for (size_t m = 0; m < cur_area_data.mob_generators.size(); ++m) {
-		mob_gen* m_ptr = cur_area_data.mob_generators[m];
-		data_node* mobsl_node = mobs_node->get_child(m_ptr->lid);
-		data_node* mob_node =
-			new data_node(m_ptr->category->name, "");
-		mobsl_node->add(mob_node);
-        if (m_ptr->type) {
-			mob_node->add(
-				new data_node("type", m_ptr->type->name)
-			);
-		}
-		mob_node->add(
-			new data_node(
-				"p",
-				f2s(m_ptr->pos.x) + " " + f2s(m_ptr->pos.y)
-			)
-		);
-		if (m_ptr->angle != 0) {
-			mob_node->add(
-				new data_node("angle", f2s(m_ptr->angle))
-			);
-		}
-		if (m_ptr->vars.size()) {
-			mob_node->add(new data_node("vars", m_ptr->vars));
-		}
-		if (m_ptr->lid != 0)
-			mob_node->add(
-				new data_node("group", i2s(m_ptr->lid))
-			);
-	}
-
-	geometry_file.add(mobs_node);
-	geometry_file.add(groupAmount);
+    data_node* mobs_node = new data_node("mobs", "");
+    geometry_file.add(mobs_node);
+    
+    for(size_t m = 0; m < cur_area_data.mob_generators.size(); ++m) {
+        mob_gen* m_ptr = cur_area_data.mob_generators[m];
+        data_node* mob_node =
+            new data_node(m_ptr->category->name, "");
+        mobs_node->add(mob_node);
+        
+        if(m_ptr->type) {
+            mob_node->add(
+                new data_node("type", m_ptr->type->name)
+            );
+        }
+        mob_node->add(
+            new data_node(
+                "p",
+                f2s(m_ptr->pos.x) + " " + f2s(m_ptr->pos.y)
+            )
+        );
+        if(m_ptr->angle != 0) {
+            mob_node->add(
+                new data_node("angle", f2s(m_ptr->angle))
+            );
+        }
+        if(m_ptr->vars.size()) {
+            mob_node->add(
+                new data_node("vars", m_ptr->vars)
+            );
+        }
+        
+        string links_str;
+        for(size_t l = 0; l < m_ptr->link_nrs.size(); ++l) {
+            if(l > 0) links_str += " ";
+            links_str += i2s(m_ptr->link_nrs[l]);
+        }
+        
+        if(!links_str.empty()) {
+            mob_node->add(
+                new data_node("links", links_str)
+            );
+        }
+    }
     
     //Path stops.
     data_node* path_stops_node = new data_node("path_stops", "");
@@ -3259,8 +3240,12 @@ bool area_editor::save_area(const bool to_backup) {
     data_file.add(
         new data_node("spray_amounts", cur_area_data.spray_amounts)
     );
-    
-    
+	data_file.add(
+		new data_node("versus", b2s(VERSUS_ON))
+	);
+	data_file.add(
+		new data_node("auto_win", i2s(max_score))
+	);
     //Finally, save.
     string geometry_file_name;
     string data_file_name;
@@ -3433,7 +3418,7 @@ void area_editor::set_new_circle_sector_points() {
     float anchor_angle =
         get_angle(new_circle_sector_center, new_circle_sector_anchor);
     float cursor_angle =
-        get_angle(new_circle_sector_center, mouse_cursor_w);
+        get_angle(new_circle_sector_center, mouse_cursor_w[pnum]);
     float radius =
         dist(
             new_circle_sector_center, new_circle_sector_anchor
@@ -3668,7 +3653,7 @@ void area_editor::start_mob_move() {
     for(auto m = selected_mobs.begin(); m != selected_mobs.end(); ++m) {
         pre_move_mob_coords[*m] = (*m)->pos;
         
-        dist d(mouse_cursor_w, (*m)->pos);
+        dist d(mouse_cursor_w[pnum], (*m)->pos);
         if(!move_closest_mob || d < move_closest_mob_dist) {
             move_closest_mob = *m;
             move_closest_mob_dist = d;
@@ -3676,7 +3661,7 @@ void area_editor::start_mob_move() {
         }
     }
     
-    move_mouse_start_pos = mouse_cursor_w;
+    move_mouse_start_pos = mouse_cursor_w[pnum];
     moving = true;
 }
 
@@ -3695,7 +3680,7 @@ void area_editor::start_path_stop_move() {
     ) {
         pre_move_stop_coords[*s] = (*s)->pos;
         
-        dist d(mouse_cursor_w, (*s)->pos);
+        dist d(mouse_cursor_w[pnum], (*s)->pos);
         if(!move_closest_stop || d < move_closest_stop_dist) {
             move_closest_stop = *s;
             move_closest_stop_dist = d;
@@ -3703,7 +3688,7 @@ void area_editor::start_path_stop_move() {
         }
     }
     
-    move_mouse_start_pos = mouse_cursor_w;
+    move_mouse_start_pos = mouse_cursor_w[pnum];
     moving = true;
 }
 
@@ -3714,7 +3699,7 @@ void area_editor::start_path_stop_move() {
 void area_editor::start_shadow_move() {
     pre_move_shadow_coords = selected_shadow->center;
     
-    move_mouse_start_pos = mouse_cursor_w;
+    move_mouse_start_pos = mouse_cursor_w[pnum];
     moving = true;
 }
 
@@ -3731,7 +3716,7 @@ void area_editor::start_vertex_move() {
         point p((*v)->x, (*v)->y);
         pre_move_vertex_coords[*v] = p;
         
-        dist d(mouse_cursor_w, p);
+        dist d(mouse_cursor_w[pnum], p);
         if(!move_closest_vertex || d < move_closest_vertex_dist) {
             move_closest_vertex = *v;
             move_closest_vertex_dist = d;
@@ -3742,7 +3727,7 @@ void area_editor::start_vertex_move() {
     unordered_set<sector*> affected_sectors =
         get_affected_sectors(selected_vertexes);
         
-    move_mouse_start_pos = mouse_cursor_w;
+    move_mouse_start_pos = mouse_cursor_w[pnum];
     moving = true;
 }
 
@@ -3973,6 +3958,61 @@ area_editor::texture_suggestion::texture_suggestion(
 void area_editor::texture_suggestion::destroy() {
     textures.detach(name);
 }
+void area_editor::save_day(const bool to_backup) {
+	data_node geometry_file("", "");
+	data_node* mobs_node = new data_node("mobs", "");
+	geometry_file.add(mobs_node);
 
+	for (size_t m = 0; m < cur_area_data.mob_generators.size(); ++m) {
+		mob_gen* m_ptr = cur_area_data.mob_generators[m];
+		data_node* mob_node =
+			new data_node(m_ptr->category->name, "");
+		mobs_node->add(mob_node);
+
+		if (m_ptr->type) {
+			mob_node->add(
+				new data_node("type", m_ptr->type->name)
+			);
+		}
+		mob_node->add(
+			new data_node(
+				"p",
+				f2s(m_ptr->pos.x) + " " + f2s(m_ptr->pos.y)
+			)
+		);
+		if (m_ptr->angle != 0) {
+			mob_node->add(
+				new data_node("angle", f2s(m_ptr->angle))
+			);
+		}
+		if (m_ptr->vars.size()) {
+			mob_node->add(
+				new data_node("vars", m_ptr->vars)
+			);
+		}
+
+		string links_str;
+		for (size_t l = 0; l < m_ptr->link_nrs.size(); ++l) {
+			if (l > 0) links_str += " ";
+			links_str += i2s(m_ptr->link_nrs[l]);
+		}
+
+		if (!links_str.empty()) {
+			mob_node->add(
+				new data_node("links", links_str)
+			);
+		}
+	}
+	string gen_file_name;
+	string data_file_name;
+	if (!to_backup) {
+		gen_file_name =
+			AREAS_FOLDER_PATH + "/" + cur_area_name + "/" + cur_day + "/this.txt";
+	}
+	else gen_file_name =
+		USER_AREA_DATA_FOLDER_PATH + "/" + cur_area_name + "/" + cur_day + "/this_backup.txt";
+	bool geo_save_ok = geometry_file.save_file(gen_file_name);
+
+}
 
 area_editor::~area_editor() { }

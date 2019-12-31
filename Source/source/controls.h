@@ -38,7 +38,7 @@ struct control_info {
     int stick;
     //Axis of the stick.
     int axis;
-    
+
     control_info(unsigned char action, const string &s);
     string stringify();
 };
@@ -47,13 +47,13 @@ struct control_info {
 struct action_from_event {
     size_t button;
     float pos;
-    size_t player;
+    size_t playee;
     action_from_event(
-        const size_t button, const float pos, const size_t player
+        const size_t button, const float pos, const size_t playee
     ) :
         button(button),
         pos(pos),
-        player(player) { }
+        playee(playee) { }
 };
 
 vector<action_from_event> get_actions_from_event(const ALLEGRO_EVENT &ev);
@@ -67,6 +67,14 @@ enum BUTTONS {
     BUTTON_UP,
     BUTTON_LEFT,
     BUTTON_DOWN,
+	BUTTON_MOVE_Y,
+	BUTTON_MOVE_X,
+	BUTTON_CURSOR_Y,
+	BUTTON_CURSOR_X,
+	BUTTON_GROUP_Y,
+	BUTTON_GROUP_X,
+	BUTTON_MENU_Y,
+	BUTTON_MENU_X,
     BUTTON_CURSOR_RIGHT,
     BUTTON_CURSOR_UP,
     BUTTON_CURSOR_LEFT,
@@ -112,8 +120,7 @@ enum CONTROL_TYPES {
     CONTROL_TYPE_MOUSE_WHEEL_LEFT,
     CONTROL_TYPE_MOUSE_WHEEL_RIGHT,
     CONTROL_TYPE_JOYSTICK_BUTTON,
-    CONTROL_TYPE_JOYSTICK_AXIS_POS,
-    CONTROL_TYPE_JOYSTICK_AXIS_NEG,
+    CONTROL_TYPE_JOYSTICK_AXIS,
 };
 
 #endif //ifndef CONTROLS_INCLUDED

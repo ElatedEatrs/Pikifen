@@ -43,10 +43,6 @@ mob::mob(const point &pos, mob_type* type, const float angle) :
     far_reach(INVALID),
     near_reach(INVALID),
     pos(pos),
-	bond(nullptr),
-	linkedparent(false),
-	linkedchild(false),
-	groupid(0),
     z(0),
     speed_z(0),
     angle(angle),
@@ -81,8 +77,9 @@ mob::mob(const point &pos, mob_type* type, const float angle) :
     group_spot_index(INVALID),
     carry_info(nullptr),
     id(next_mob_id),
-	lid(0),
     health(type->max_health),
+	breadbug(false),
+	breadbugchaser(nullptr),
     invuln_period(0),
     team(MOB_TEAM_NONE),
     hide(false),
@@ -372,19 +369,19 @@ void mob::arachnorb_foot_move_logic() {
  * feet's positions.
  */
 void mob::arachnorb_head_turn_logic() {
-    if(bond->mobs.empty()) return;
+    if(links.empty()) return;
     
     float angle_deviation_avg = 0;
     size_t n_feet = 0;
     
-    for(size_t l = 0; l < bond->mobs.size(); ++l) {
-        if(!bond->mobs[l]->parent) {
+    for(size_t l = 0; l < links.size(); ++l) {
+        if(!links[l]->parent) {
             continue;
         }
-        if(bond->mobs[l]->parent->m != this) {
+        if(links[l]->parent->m != this) {
             continue;
         }
-        if(bond->mobs[l]->parent->limb_parent_body_part == INVALID) {
+        if(links[l]->parent->limb_parent_body_part == INVALID) {
             continue;
         }
         
@@ -394,14 +391,14 @@ void mob::arachnorb_head_turn_logic() {
             get_angle(
                 point(),
                 get_hitbox(
-                    bond->mobs[l]->parent->limb_parent_body_part
+                    links[l]->parent->limb_parent_body_part
                 )->pos
             );
         float cur_angle =
-            get_angle(pos, bond->mobs[l]->pos) - angle;
+            get_angle(pos, links[l]->pos) - angle;
         float angle_deviation =
             get_angle_cw_dif(default_angle, cur_angle);
-        if(angle_deviation > 3.14159265358979323846) {
+        if(angle_deviation > M_PI) {
             angle_deviation -= TAU;
         }
         angle_deviation_avg += angle_deviation;
@@ -511,181 +508,393 @@ void mob::become_uncarriable() {
  * target_point: Return the target point here.
  */
 bool mob::calculate_carrying_destination(
-    mob* added, mob* removed, mob** target_mob, point* target_point
+	mob* added, mob* removed, mob** target_mob, point* target_point
 ) {
-    if(!carry_info) return false;
-    
-    //For starters, check if this is to be carried to the ship.
-    //Get that out of the way if so.
-    if(carry_info->destination == CARRY_DESTINATION_SHIP) {
-    
-        ship* closest_ship = NULL;
-        dist closest_ship_dist;
-        
-        for(size_t s = 0; s < ships.size(); ++s) {
-            ship* s_ptr = ships[s];
-            dist d(pos, s_ptr->beam_final_pos);
-            
-            if(!closest_ship || d < closest_ship_dist) {
-                closest_ship = s_ptr;
-                closest_ship_dist = d;
-            }
-        }
-        
-        if(closest_ship) {
-            *target_mob = closest_ship;
-            *target_point = closest_ship->beam_final_pos;
-            return true;
-            
-        } else {
-            *target_mob = NULL;
-            return false;
-        }
-    }
-    
-    //Now, if it's towards a linked mob, just go there.
-    if(carry_info->destination == CARRY_DESTINATION_LINKED_MOB) {
-        if(!links.empty()) {
-            *target_mob = links[0];
-            *target_point = (*target_mob)->pos;
-            return true;
-            
-        } else {
-            *target_mob = NULL;
-            return false;
-        }
-    }
-    
-    //If it's meant for an Onion, we need to decide which Onion, based on
-    //the Pikmin. Buckle up, because it's not as easy as it might seem.
-    
-    //How many of each Pikmin type are carrying.
-    map<pikmin_type*, unsigned> type_quantity;
-    //The Pikmin type with the most carriers.
-    vector<pikmin_type*> majority_types;
-    unordered_set<pikmin_type*> available_onions;
-    
-    //First, check which Onions are even available.
-    for(size_t o = 0; o < onions.size(); o++) {
-        onion* o_ptr = onions[o];
-        if(o_ptr->activated) {
-            available_onions.insert(o_ptr->oni_type->pik_type);
-        }
-    }
-    
-    if(available_onions.empty()) {
-        //No Onions?! Well...make the Pikmin stuck.
-        *target_mob = NULL;
-        return false;
-    }
-    
-    //Count how many of each type there are carrying.
-    for(size_t p = 0; p < type->max_carriers; ++p) {
-        pikmin* pik_ptr = NULL;
-        
-        if(carry_info->spot_info[p].state != CARRY_SPOT_USED) continue;
-        
-        pik_ptr = (pikmin*) carry_info->spot_info[p].pik_ptr;
-        
-        //If it doesn't have an Onion, it won't even count.
-        if(available_onions.find(pik_ptr->pik_type) == available_onions.end()) {
-            continue;
-        }
-        
-        type_quantity[pik_ptr->pik_type]++;
-    }
-    
-    //Then figure out what are the majority types.
-    unsigned most = 0;
-    for(auto t = type_quantity.begin(); t != type_quantity.end(); ++t) {
-        if(t->second > most) {
-            most = t->second;
-            majority_types.clear();
-        }
-        if(t->second == most) majority_types.push_back(t->first);
-    }
-    
-    //If we ended up with no candidates, pick a type at random,
-    //out of all possible types.
-    if(majority_types.empty()) {
-        for(
-            auto t = available_onions.begin();
-            t != available_onions.end(); ++t
-        ) {
-            majority_types.push_back(*t);
-        }
-    }
-    
-    pikmin_type* decided_type = NULL;
-    
-    //Now let's pick an Onion from the candidates.
-    if(majority_types.size() == 1) {
-        //If there's only one possible type to pick, pick it.
-        decided_type = *majority_types.begin();
-        
-    } else {
-        //If there's a tie, let's take a careful look.
-        bool new_tie = false;
-        
-        //Is the Pikmin that just joined part of the majority types?
-        //If so, that means this Pikmin just created a NEW tie!
-        //So let's pick a random Onion again.
-        if(added) {
-            for(size_t mt = 0; mt < majority_types.size(); ++mt) {
-                if(added->type == majority_types[mt]) {
-                    new_tie = true;
-                    break;
-                }
-            }
-        }
-        
-        //If a Pikmin left, check if it is related to the majority types.
-        //If not, then a new tie wasn't made, no worries.
-        //If it was related, a new tie was created.
-        if(removed) {
-            new_tie = false;
-            for(size_t mt = 0; mt < majority_types.size(); ++mt) {
-                if(removed->type == majority_types[mt]) {
-                    new_tie = true;
-                    break;
-                }
-            }
-        }
-        
-        //Check if the previously decided type belongs to one of the majorities.
-        //If so, it can be chosen again, but if not, it cannot.
-        bool can_continue = false;
-        for(size_t mt = 0; mt < majority_types.size(); ++mt) {
-            if(majority_types[mt] == decided_type) {
-                can_continue = true;
-                break;
-            }
-        }
-        if(!can_continue) decided_type = NULL;
-        
-        //If the Pikmin that just joined is not a part of the majorities,
-        //then it had no impact on the existing ties.
-        //Go with the Onion that had been decided before.
-        if(new_tie || !decided_type) {
-            decided_type =
-                majority_types[randomi(0, majority_types.size() - 1)];
-        }
-    }
-    
-    
-    //Figure out where that type's Onion is.
-    size_t onion_nr = 0;
-    for(; onion_nr < onions.size(); ++onion_nr) {
-        if(onions[onion_nr]->oni_type->pik_type == decided_type) {
-            break;
-        }
-    }
-    
-    //Finally, set the destination data.
-    *target_mob = onions[onion_nr];
-    *target_point = (*target_mob)->pos;
-    
-    return true;
+	if (VERSUS_ON == true) {
+		goto onion_decisionvs;
+	}
+	
+	if (!carry_info) return false;
+	
+
+		//For starters, check if this is to be carried to the ship.
+		//Get that out of the way if so.
+		if (carry_info->destination == CARRY_DESTINATION_SHIP) {
+
+			ship* closest_ship = NULL;
+			dist closest_ship_dist;
+
+			for (size_t s = 0; s < ships.size(); ++s) {
+				ship* s_ptr = ships[s];
+				dist d(pos, s_ptr->beam_final_pos);
+
+				if (!closest_ship || d < closest_ship_dist) {
+					closest_ship = s_ptr;
+					closest_ship_dist = d;
+				}
+			}
+
+			if (closest_ship) {
+				*target_mob = closest_ship;
+				*target_point = closest_ship->beam_final_pos;
+				return true;
+
+			}
+			else {
+				*target_mob = NULL;
+				return false;
+			}
+		}
+
+		//Now, if it's towards a linked mob, just go there.
+		if (carry_info->destination == CARRY_DESTINATION_LINKED_MOB) {
+			if (!links.empty()) {
+				*target_mob = links[0];
+				*target_point = (*target_mob)->pos;
+				return true;
+
+			}
+			else {
+				*target_mob = NULL;
+				return false;
+			}
+		}
+	onion_decisionvs:
+		vector<onion*> onion_numbers;
+		if (VERSUS_ON == true) {
+			if (carry_info->cur_team == MOB_TEAM_PLAYER_1) {
+				if (team == MOB_TEAM_JURY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_JERRY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team != carry_info->cur_team && o_ptr->team != INVALID) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_ALLIES1) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+			}
+			else if (carry_info->cur_team == MOB_TEAM_PLAYER_2) {
+				if (team == MOB_TEAM_JURY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_JERRY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team != carry_info->cur_team && o_ptr->team != INVALID) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_ALLIES2) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+
+			}if (carry_info->cur_team == MOB_TEAM_PLAYER_3) {
+				if (team == MOB_TEAM_JURY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_JERRY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team != carry_info->cur_team && o_ptr->team != INVALID) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_ALLIES3) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+
+			}if (carry_info->cur_team == MOB_TEAM_PLAYER_4) {
+				if (team == MOB_TEAM_JURY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_JERRY) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team != carry_info->cur_team && o_ptr->team != INVALID) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else if (team == MOB_TEAM_ALLIES4) {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+				else {
+					for (size_t o = 0; o < onions.size(); o++) {
+						onion* o_ptr = onions[o];
+						if (o_ptr->team == carry_info->cur_team) {
+							onion_numbers.push_back(o_ptr);
+						}
+					}
+					if (onion_numbers.empty()){ *target_mob = NULL; return false;
+						
+
+					}
+				}
+			}
+		}
+		//If it's meant for an Onion, we need to decide which Onion, based on
+		//the Pikmin. Buckle up, because it's not as easy as it might seem.
+
+		//How many of each Pikmin type are carrying.
+		map<pikmin_type*, unsigned> type_quantity;
+		//The Pikmin type with the most carriers.
+		vector<pikmin_type*> majority_types;
+		unordered_set<pikmin_type*> available_onions;
+
+		//First, check which Onions are even available.
+		for (size_t o = 0; o < onion_numbers.size(); o++) {
+			onion* o_ptr = onion_numbers[o];
+			if (o_ptr->activated) {
+				available_onions.insert(o_ptr->oni_type->pik_type);
+			}
+		}
+
+		if (available_onions.empty()) {
+			//No Onions?! Well...make the Pikmin stuck.
+			*target_mob = NULL;
+			return false;
+		}
+
+		//Count how many of each type there are carrying.
+		for (size_t p = 0; p < type->max_carriers; ++p) {
+			pikmin* pik_ptr = NULL;
+
+			if (carry_info->spot_info[p].state != CARRY_SPOT_USED) continue;
+
+			pik_ptr = (pikmin*)carry_info->spot_info[p].pik_ptr;
+
+			//If it doesn't have an Onion, it won't even count.
+			if (available_onions.find(pik_ptr->pik_type) == available_onions.end()) {
+				continue;
+			}
+
+			type_quantity[pik_ptr->pik_type]++;
+		}
+
+		//Then figure out what are the majority types.
+		unsigned most = 0;
+		for (auto t = type_quantity.begin(); t != type_quantity.end(); ++t) {
+			if (t->second > most) {
+				most = t->second;
+				majority_types.clear();
+			}
+			if (t->second == most) majority_types.push_back(t->first);
+		}
+
+		//If we ended up with no candidates, pick a type at random,
+		//out of all possible types.
+		if (majority_types.empty()) {
+			for (
+				auto t = available_onions.begin();
+				t != available_onions.end(); ++t
+				) {
+				majority_types.push_back(*t);
+			}
+		}
+
+		pikmin_type* decided_type = NULL;
+
+		//Now let's pick an Onion from the candidates.
+		if (majority_types.size() == 1) {
+			//If there's only one possible type to pick, pick it.
+			decided_type = *majority_types.begin();
+
+		}
+		else {
+			//If there's a tie, let's take a careful look.
+			bool new_tie = false;
+
+			//Is the Pikmin that just joined part of the majority types?
+			//If so, that means this Pikmin just created a NEW tie!
+			//So let's pick a random Onion again.
+			if (added) {
+				for (size_t mt = 0; mt < majority_types.size(); ++mt) {
+					if (added->type == majority_types[mt]) {
+						new_tie = true;
+						break;
+					}
+				}
+			}
+
+			//If a Pikmin left, check if it is related to the majority types.
+			//If not, then a new tie wasn't made, no worries.
+			//If it was related, a new tie was created.
+			if (removed) {
+				new_tie = false;
+				for (size_t mt = 0; mt < majority_types.size(); ++mt) {
+					if (removed->type == majority_types[mt]) {
+						new_tie = true;
+						break;
+					}
+				}
+			}
+
+			//Check if the previously decided type belongs to one of the majorities.
+			//If so, it can be chosen again, but if not, it cannot.
+			bool can_continue = false;
+			for (size_t mt = 0; mt < majority_types.size(); ++mt) {
+				if (majority_types[mt] == decided_type) {
+					can_continue = true;
+					break;
+				}
+			}
+			if (!can_continue) decided_type = NULL;
+
+			//If the Pikmin that just joined is not a part of the majorities,
+			//then it had no impact on the existing ties.
+			//Go with the Onion that had been decided before.
+			if (new_tie || !decided_type) {
+				decided_type =
+					majority_types[randomi(0, majority_types.size() - 1)];
+			}
+		}
+
+
+		//Figure out where that type's Onion is.
+		size_t onion_nr = 0;
+		for (; onion_nr < onion_numbers.size(); ++onion_nr) {
+			if (onion_numbers[onion_nr]->oni_type->pik_type == decided_type) {
+				break;
+			}
+		}
+
+		//Finally, set the destination data.
+		*target_mob = onion_numbers[onion_nr];
+		*target_point = (*target_mob)->pos;
+
+		return true;
+	
 }
 
 
@@ -1087,7 +1296,23 @@ void mob::draw(bitmap_effect_manager* effect_manager) {
     
     draw_mob(effect_manager);
 }
-
+void mob::drawmarble(bitmap_effect_manager* effect_manager,size_t marble_num) {
+	al_use_transform(&identity_transform);
+	point i_center, i_size;
+	if (hud_items.get_draw_data(HUD_ITEM_DAY_NUMBER, &i_center, &i_size)) {
+		sprite* s_ptr = anim.anim_db->sprites[0];
+		draw_compressed_text(font_area_name,
+			al_map_rgb(255,255,255), point(i_center.x - (i_size.x), i_center.y + (i_size.y*(marble_num + 1))), ALLEGRO_ALIGN_CENTER ,20 ,point(i_size.x,i_size.y * 0.3),
+			"Target:"
+			);
+		point i_size2 = i_size * 0.7;
+		draw_bitmap(
+			s_ptr->bitmap,
+			point(i_center.x, i_center.y + (i_size.y*(marble_num+1))), i_size2,
+			angle + s_ptr->angle
+		);
+	}
+}
 
 /* ----------------------------------------------------------------------------
  * Draws the limb that connects this mob to its parent.
@@ -1171,7 +1396,7 @@ void mob::draw_mob(bitmap_effect_manager* effect_manager) {
     }
     add_status_bitmap_effects(effect_manager);
     add_sector_brightness_bitmap_effect(effect_manager);
-    
+
     point draw_pos = get_sprite_center(s_ptr);
     point draw_size = get_sprite_dimensions(s_ptr);
     
@@ -1276,7 +1501,7 @@ bool mob::follow_path(
     path_info = new path_info_struct(this, target);
     path_info->final_target_distance = final_target_distance;
     
-    if(can_continue && old_path.size() >= 2 && path_info->path.size() >= 2) {
+    if(can_continue && old_path.size() >= 2 && path_info->path.size() >= 2 && old_path.size() >= old_path_stop_nr) {
         path_stop* next_stop = old_path[old_path_stop_nr];
         for(size_t s = 1; s < path_info->path.size(); ++s) {
             if(path_info->path[s] == next_stop) {
@@ -1551,7 +1776,7 @@ bool mob::is_off_camera() {
             max(type->rectangular_dim.x / 2.0, type->rectangular_dim.y / 2.0);
     }
     
-    return !bbox_check(cam_box[0], cam_box[1], pos, m_radius);
+    return !bbox_check(cam_box[pnum][0], cam_box[pnum][1], pos, m_radius);
 }
 
 
@@ -1697,15 +1922,12 @@ void mob::respawn() {
  * event, with the message as data.
  */
 void mob::send_message(mob* receiver, string &msg) {
+
     mob_event* ev = q_get_event(receiver, MOB_EVENT_RECEIVE_MESSAGE);
     if(!ev) return;
     ev->run(receiver, (void*) &msg, (void*) this);
 }
-void mob::send_message_bond(mob* receiver, string &msg) {
-	mob_event* ev = q_get_event(receiver, MOB_EVENT_RECEIVE_MESSAGEBOND);
-	if (!ev) return;
-	ev->run(receiver, (void*)&msg, (void*)this);
-}
+
 
 /* ----------------------------------------------------------------------------
  * Sets the mob's animation.
@@ -1900,14 +2122,10 @@ mob* mob::spawn(mob_type::spawn_struct* info, mob_type* type_ptr) {
     }
     
     if(info->link_object_to_spawn) {
-		linkedparent = true;
-		new_mob->bond->mobs.push_back(this);
+        links.push_back(new_mob);
     }
     if(info->link_spawn_to_object) {
-
-
-		new_mob->linkedchild = true;
-		bond->mobs.push_back(new_mob);
+        new_mob->links.push_back(this);
     }
     if(info->momentum != 0) {
         float a = randomf(0, TAU);
@@ -2189,18 +2407,18 @@ void mob::tick_brain() {
                     //Reached the final destination.
                     reached_destination = true;
                     
-                } else {
-                    //Reached a stop while traversing the path.
-                    //Think about going to the next.
-                    chase(
-                        path_info->path[path_info->cur_path_stop_nr]->pos,
-                        NULL, false, NULL, true, 3.0f, chase_speed
-                    );
-                }
-                
-            } else {
-                reached_destination = true;
-            }
+				}
+				else {
+					//Reached a stop while traversing the path.
+					//Think about going to the next.
+					if (path_info->path.size() >= path_info->cur_path_stop_nr)
+						chase(
+							path_info->path[path_info->cur_path_stop_nr]->pos,
+							NULL, false, NULL, true, 3.0f, chase_speed
+						);
+				}
+			}
+			else { reached_destination = true; }
             
             if(reached_destination) {
                 //Reached the final destination. Think about stopping.
@@ -3060,12 +3278,13 @@ void mob::tick_script() {
     
     //Check if it got whistled.
     mob_event* whistled_ev = q_get_event(this, MOB_EVENT_WHISTLED);
-    if(whistling && whistled_ev) {
-        if(dist(pos, leader_cursor_w) <= whistle_radius) {
-            whistled_ev->run(this);
-        }
-    }
-    
+	for (size_t o = 0; o < max_players; ++o) {
+		if (cur_leader_ptrs[o]->whistling && whistled_ev) {
+			if (dist(pos, leader_cursor_ws[o]) <= whistle_radius[o]) {
+				whistled_ev->run(this,(void*)cur_leader_ptrs[o]);
+			}
+		}
+	}
     //Following a leader.
     if(following_group) {
         mob_event* spot_near_ev = q_get_event(this, MOB_EVENT_SPOT_IS_NEAR);
@@ -3085,7 +3304,10 @@ void mob::tick_script() {
             }
         }
     }
-    
+	mob_event* cutscene_start_ev = q_get_event(this, MOB_EVENT_CUTSCENE_START);
+	if (cutscene_start_ev){
+				cutscene_start_ev->run(this, (void*) &cutscene_id);
+	}
     //Far away from home.
     mob_event* far_from_home_ev = q_get_event(this, MOB_EVENT_FAR_FROM_HOME);
     if(far_from_home_ev) {
@@ -3094,7 +3316,13 @@ void mob::tick_script() {
             far_from_home_ev->run(this);
         }
     }
-    
+	mob_event* near_to_home_ev = q_get_event(this, MOB_EVENT_ON_NEAR_HOME);
+	if (near_to_home_ev) {
+		dist d(pos,home );
+		if (d < type->territory_radius) {
+			near_to_home_ev->run(this);
+		}
+	}
     //Following a path, and an obstacle was destroyed.
     if(path_info) {
         for(

@@ -122,12 +122,12 @@ void gameplay::handle_controls(const ALLEGRO_EVENT &ev) {
                     
                     create_mob(
                         mob_categories.get(MOB_CATEGORY_PIKMIN),
-                        mouse_cursor_w, new_pikmin_type, 0, "maturity=2"
+                        mouse_cursor_w[pnum], new_pikmin_type, 0, "maturity=2"
                     );
                 }
                 
             } else if(id == CREATOR_TOOL_TELEPORT) {
-                cur_leader_ptr->chase(mouse_cursor_w, NULL, true);
+                cur_leader_ptrs[pnum]->chase(mouse_cursor_w[pnum], NULL, true);
                 
             }
             
@@ -136,18 +136,18 @@ void gameplay::handle_controls(const ALLEGRO_EVENT &ev) {
     
     vector<action_from_event> actions = get_actions_from_event(ev);
     for(size_t a = 0; a < actions.size(); ++a) {
-        handle_button(actions[a].button, actions[a].pos, actions[a].player);
+        handle_button(actions[a].button, actions[a].pos, actions[a].playee);
     }
     
-    for(size_t p = 0; p < MAX_PLAYERS; p++) {
+    for(size_t p = 0; p < max_players; p++) {
         if(ev.type == ALLEGRO_EVENT_MOUSE_AXES && mouse_moves_cursor[p]) {
-            mouse_cursor_s.x = ev.mouse.x;
-            mouse_cursor_s.y = ev.mouse.y;
-            mouse_cursor_w = mouse_cursor_s;
+            mouse_cursor_s[p].x = ev.mouse.x;
+            mouse_cursor_s[p].y = ev.mouse.y;
+            mouse_cursor_w[p] = mouse_cursor_s[p];
             
             al_transform_coordinates(
-                &screen_to_world_transform,
-                &mouse_cursor_w.x, &mouse_cursor_w.y
+                &screen_to_world_transform[p],
+                &mouse_cursor_w[p].x, &mouse_cursor_w[p].y
             );
         }
     }
@@ -165,11 +165,11 @@ void gameplay::handle_controls(const ALLEGRO_EVENT &ev) {
  * player: Number of the player that pressed.
  */
 void gameplay::handle_button(
-    const size_t button, const float pos, const size_t player
+    const size_t button, const float pos, const size_t playee
 ) {
-
+	size_t player = playee;
     if(!ready_for_input || !is_input_allowed) return;
-    
+	if (player > max_players) return;
     bool is_down = (pos >= 0.5);
     
     if(cur_message.empty()) {
@@ -178,7 +178,8 @@ void gameplay::handle_button(
             button == BUTTON_RIGHT ||
             button == BUTTON_UP ||
             button == BUTTON_LEFT ||
-            button == BUTTON_DOWN
+            button == BUTTON_MOVE_Y ||
+			button == BUTTON_MOVE_X
         ) {
         
             /*******************
@@ -186,22 +187,41 @@ void gameplay::handle_button(
             *   Move   --->/|  *
             *              V > *
             *******************/
-            
-            if(button == BUTTON_RIGHT) {
-                leader_movement.right = pos;
+			if (button == BUTTON_MOVE_Y && pos < -0.1) {
+				leader_movement[player].up = -pos;
+			}
+			else if (button == BUTTON_MOVE_Y && pos > 0.1) {
+				leader_movement[player].down = pos;
+			}
+			else if (button == BUTTON_MOVE_X && pos < -0.1) {
+				leader_movement[player].right = pos;
+			}
+			else if (button == BUTTON_MOVE_X && pos > 0.1) {
+				leader_movement[player].left = -pos;
+			} else if(button == BUTTON_RIGHT) {
+                leader_movement[player].right = pos;
             } else if(button == BUTTON_LEFT) {
-                leader_movement.left = pos;
+                leader_movement[player].left = pos;
             } else if(button == BUTTON_UP) {
-                leader_movement.up = pos;
+                leader_movement[player].up = pos;
             } else if(button == BUTTON_DOWN) {
-                leader_movement.down = pos;
+                leader_movement[player].down = pos;
             }
+			else {
+				leader_movement[player].down = 0.001;
+				leader_movement[player].up = 0.001;
+				leader_movement[player].left = 0.001;
+				leader_movement[player].right = 0.001;
+			}
+
             
         } else if(
             button == BUTTON_CURSOR_RIGHT ||
             button == BUTTON_CURSOR_UP ||
             button == BUTTON_CURSOR_LEFT ||
-            button == BUTTON_CURSOR_DOWN
+            button == BUTTON_CURSOR_DOWN ||
+			button == BUTTON_CURSOR_Y ||
+			button == BUTTON_CURSOR_X
         ) {
             /********************
             *             .-.   *
@@ -209,41 +229,83 @@ void gameplay::handle_button(
             *             '-'   *
             ********************/
             
-            if(button == BUTTON_CURSOR_RIGHT) {
-                cursor_movement.right = pos;
+			if (button == BUTTON_CURSOR_Y && pos < -0.1) {
+				cursor_movement[player].up = -pos;
+			}
+			else if (button == BUTTON_CURSOR_Y && pos > 0.1) {
+				cursor_movement[player].down = pos;
+			}
+			else if (button == BUTTON_CURSOR_X && pos < -0.1) {
+				cursor_movement[player].right = pos;
+			}
+			else if (button == BUTTON_CURSOR_X && pos > 0.1) {
+				cursor_movement[player].left = -pos;
+			}
+			else if(button == BUTTON_CURSOR_RIGHT) {
+                cursor_movement[player].right = pos;
             } else if(button == BUTTON_CURSOR_LEFT) {
-                cursor_movement.left = pos;
+                cursor_movement[player].left = pos;
             } else if(button == BUTTON_CURSOR_UP) {
-                cursor_movement.up = pos;
+                cursor_movement[player].up = pos;
             } else if(button == BUTTON_CURSOR_DOWN) {
-                cursor_movement.down = pos;
+                cursor_movement[player].down = pos;
             }
+			else {
+				cursor_movement[player].down = 0;
+				cursor_movement[player].up = 0;
+				cursor_movement[player].left = 0;
+				cursor_movement[player].right = 0;
+			}
+
             
         } else if(
             button == BUTTON_GROUP_RIGHT ||
             button == BUTTON_GROUP_UP ||
             button == BUTTON_GROUP_LEFT ||
-            button == BUTTON_GROUP_DOWN
-        ) {
-            /******************
-            *            ***  *
-            *   Group   ****O *
-            *            ***  *
-            ******************/
-            
-            if(button == BUTTON_GROUP_RIGHT) {
-                group_movement.right = pos;
-            } else if(button == BUTTON_GROUP_LEFT) {
-                group_movement.left = pos;
-            } else if(button == BUTTON_GROUP_UP) {
-                group_movement.up = pos;
-            } else if(button == BUTTON_GROUP_DOWN) {
-                group_movement.down = pos;
-            }
-            
+            button == BUTTON_GROUP_DOWN ||
+			button == BUTTON_GROUP_Y ||
+			button == BUTTON_GROUP_X
+			) {
+			/********************
+			*             .-.   *
+			*   GROUP   ( = )> *
+			*             '-'   *
+			********************/
+
+			if (button == BUTTON_GROUP_Y && pos < -0.1) {
+				group_movement[player].up = -pos;
+			}
+			else if (button == BUTTON_GROUP_Y && pos > 0.1) {
+				group_movement[player].down = pos;
+			}
+			else if (button == BUTTON_GROUP_X && pos < -0.1) {
+				group_movement[player].right = pos;
+			}
+			else if (button == BUTTON_GROUP_X && pos > 0.1) {
+				group_movement[player].left = -pos;
+			}
+			else if (button == BUTTON_GROUP_RIGHT) {
+				group_movement[player].right = pos;
+			}
+			else if (button == BUTTON_GROUP_LEFT) {
+				group_movement[player].left = pos;
+			}
+			else if (button == BUTTON_GROUP_UP) {
+				group_movement[player].up = pos;
+			}
+				else if (button == BUTTON_GROUP_DOWN) {
+					group_movement[player].down = pos;
+				}
+				else {
+				group_movement[player].down = 0;
+				group_movement[player].up = 0;
+				group_movement[player].left = 0;
+				group_movement[player].right = 0;
+			}
+
         } else if(button == BUTTON_GROUP_CURSOR) {
         
-            group_move_cursor = is_down;
+            group_move_cursor[player] = is_down;
             
         } else if(button == BUTTON_THROW) {
         
@@ -258,17 +320,17 @@ void gameplay::handle_button(
                 bool done = false;
                 
                 //First check if the leader should heal themselves on the ship.
-                if(close_to_ship_to_heal) {
-                    close_to_ship_to_heal->heal_leader(cur_leader_ptr);
+                if(close_to_ship_to_heal[player]) {
+                    close_to_ship_to_heal[player]->heal_leader(cur_leader_ptrs[player]);
                     done = true;
                 }
                 
                 //Now check if the leader should pluck a Pikmin.
                 if(!done) {
-                    if(close_to_pikmin_to_pluck) {
-                        cur_leader_ptr->fsm.run_event(
+                    if(close_to_pikmin_to_pluck[player]) {
+                        cur_leader_ptrs[player]->fsm.run_event(
                             LEADER_EVENT_GO_PLUCK,
-                            (void*) close_to_pikmin_to_pluck
+                            (void*) close_to_pikmin_to_pluck[player]
                         );
                         done = true;
                     }
@@ -276,18 +338,18 @@ void gameplay::handle_button(
                 
                 //Now check if the leader should open an Onion's menu.
                 if(!done) {
-                    if(close_to_onion_to_open) {
-                        close_to_onion_to_open->call_pikmin();
+					if (close_to_onion_to_open[player]) {
+                        close_to_onion_to_open[player]->call_pikmin();
                         done = true;
                     }
                 }
                 
                 //Now check if the leader should interact with an interactable.
                 if(!done) {
-                    if(close_to_interactable_to_use) {
+					if (close_to_interactable_to_use[player]) {
                         string msg = "interact";
-                        cur_leader_ptr->send_message(
-                            close_to_interactable_to_use, msg
+                        cur_leader_ptrs[player]->send_message(
+                            close_to_interactable_to_use[player], msg
                         );
                         done = true;
                     }
@@ -296,24 +358,24 @@ void gameplay::handle_button(
                 //Now check if the leader should grab a Pikmin.
                 if(!done) {
                     if(
-                        cur_leader_ptr->holding.empty() &&
-                        cur_leader_ptr->group->cur_standby_type &&
-                        !closest_group_member_distant
+                        cur_leader_ptrs[player]->holding.empty() &&
+                        cur_leader_ptrs[player]->group->cur_standby_type &&
+                        !closest_group_member_distant[player]
                     ) {
                     
-                        done = grab_closest_group_member();
+                        done = cur_leader_ptrs[player]->grab_closest_group_member();
                     }
                 }
                 
                 //Now check if the leader should punch.
                 if(!done) {
-                    cur_leader_ptr->fsm.run_event(LEADER_EVENT_PUNCH);
+                    cur_leader_ptrs[player]->fsm.run_event(LEADER_EVENT_PUNCH);
                     done = true;
                 }
                 
             } else { //Button release.
-                if(!cur_leader_ptr->holding.empty()) {
-                    cur_leader_ptr->fsm.run_event(LEADER_EVENT_THROW);
+                if(!cur_leader_ptrs[player]->holding.empty()) {
+                    cur_leader_ptrs[player]->fsm.run_event(LEADER_EVENT_THROW);
                 }
             }
             
@@ -328,19 +390,19 @@ void gameplay::handle_button(
             if(is_down) {
                 //Button pressed.
                 //Cancel auto-pluck, lying down, etc.
-                cur_leader_ptr->fsm.run_event(LEADER_EVENT_CANCEL);
+                cur_leader_ptrs[player]->fsm.run_event(LEADER_EVENT_CANCEL);
                 
-                if(close_to_onion_to_open) {
-                    close_to_onion_to_open->stow_pikmin();
+                if(close_to_onion_to_open[player]) {
+                    close_to_onion_to_open[player]->stow_pikmin(playee);
                     
                 } else {
-                    cur_leader_ptr->fsm.run_event(LEADER_EVENT_START_WHISTLE);
+                    cur_leader_ptrs[player]->fsm.run_event(LEADER_EVENT_START_WHISTLE);
                     
                 }
                 
             } else {
                 //Button released.
-                cur_leader_ptr->fsm.run_event(LEADER_EVENT_STOP_WHISTLE);
+                cur_leader_ptrs[player]->fsm.run_event(LEADER_EVENT_STOP_WHISTLE);
                 
             }
             
@@ -357,7 +419,7 @@ void gameplay::handle_button(
             
             if(!is_down) return;
             
-            change_to_next_leader(button == BUTTON_NEXT_LEADER, false);
+            cur_leader_ptrs[player]->change_to_next_leader(button == BUTTON_NEXT_LEADER, false);
             
         } else if(button == BUTTON_DISMISS) {
         
@@ -369,7 +431,7 @@ void gameplay::handle_button(
             
             if(!is_down) return;
             
-            cur_leader_ptr->fsm.run_event(LEADER_EVENT_DISMISS);
+            cur_leader_ptrs[player]->fsm.run_event(LEADER_EVENT_DISMISS);
             
         } else if(button == BUTTON_PAUSE) {
         
@@ -403,7 +465,7 @@ void gameplay::handle_button(
             
             if(spray_types.size() == 1 || spray_types.size() == 2) {
                 size_t spray_nr = 0;
-                cur_leader_ptr->fsm.run_event(
+                cur_leader_ptrs[player]->fsm.run_event(
                     LEADER_EVENT_SPRAY, (void*) &spray_nr
                 );
             }
@@ -414,7 +476,7 @@ void gameplay::handle_button(
             
             if(spray_types.size() == 2) {
                 size_t spray_nr = 1;
-                cur_leader_ptr->fsm.run_event(
+                cur_leader_ptrs[player]->fsm.run_event(
                     LEADER_EVENT_SPRAY, (void*) &spray_nr
                 );
             }
@@ -443,7 +505,7 @@ void gameplay::handle_button(
             if(!is_down) return;
             
             if(spray_types.size() > 2) {
-                cur_leader_ptr->fsm.run_event(
+                cur_leader_ptrs[player]->fsm.run_event(
                     LEADER_EVENT_SPRAY,
                     (void*) &selected_spray
                 );
@@ -506,7 +568,7 @@ void gameplay::handle_button(
             
             if(!is_down) return;
             
-            cur_leader_ptr->fsm.run_event(LEADER_EVENT_LIE_DOWN);
+            cur_leader_ptrs[player]->fsm.run_event(LEADER_EVENT_LIE_DOWN);
             
             
         } else if(
@@ -522,17 +584,17 @@ void gameplay::handle_button(
             
             if(!is_down) return;
             
-            if(cur_leader_ptr->group->members.empty()) return;
+            if(cur_leader_ptrs[player]->group->members.empty()) return;
             
             subgroup_type* starting_subgroup_type =
-                cur_leader_ptr->group->cur_standby_type;
+                cur_leader_ptrs[player]->group->cur_standby_type;
                 
             bool switch_successful;
             
-            if(cur_leader_ptr->holding.empty()) {
+            if(cur_leader_ptrs[player]->holding.empty()) {
                 //If the leader isn't holding anybody.
                 switch_successful =
-                    cur_leader_ptr->group->set_next_cur_standby_type(
+                    cur_leader_ptrs[player]->group->set_next_cur_standby_type(
                         button == BUTTON_PREV_TYPE
                     );
                     
@@ -546,13 +608,13 @@ void gameplay::handle_button(
                 bool finish = false;
                 do {
                     switch_successful =
-                        cur_leader_ptr->group->set_next_cur_standby_type(
+                        cur_leader_ptrs[player]->group->set_next_cur_standby_type(
                             button == BUTTON_PREV_TYPE
                         );
                         
                     if(
                         !switch_successful ||
-                        cur_leader_ptr->group->cur_standby_type ==
+                        cur_leader_ptrs[player]->group->cur_standby_type ==
                         starting_subgroup_type
                     ) {
                         //Reached around back to the first subgroup...
@@ -561,8 +623,8 @@ void gameplay::handle_button(
                         
                     } else {
                         //Switched to a new subgroup.
-                        update_closest_group_member();
-                        if(!closest_group_member_distant) {
+                        cur_leader_ptrs[player]->update_closest_group_member();
+                        if(!closest_group_member_distant[player]) {
                             finish = true;
                         }
                         
@@ -571,7 +633,7 @@ void gameplay::handle_button(
                 } while(!finish);
                 
                 if(switch_successful) {
-                    cur_leader_ptr->swap_held_pikmin(closest_group_member);
+                    cur_leader_ptrs[player]->swap_held_pikmin(closest_group_member[player]);
                 }
             }
             
@@ -592,14 +654,14 @@ void gameplay::handle_button(
             
             if(
                 !is_down ||
-                cur_leader_ptr->holding.empty() ||
-                cur_leader_ptr->holding[0]->type->category->id !=
+                cur_leader_ptrs[player]->holding.empty() ||
+                cur_leader_ptrs[player]->holding[0]->type->category->id !=
                 MOB_CATEGORY_PIKMIN
             ) {
                 return;
             }
             
-            pikmin* held_p_ptr = (pikmin*) cur_leader_ptr->holding[0];
+            pikmin* held_p_ptr = (pikmin*) cur_leader_ptrs[player]->holding[0];
             
             pikmin* closest_members[N_MATURITIES];
             dist closest_dists[N_MATURITIES];
@@ -607,14 +669,14 @@ void gameplay::handle_button(
                 closest_members[m] = NULL;
             }
             
-            for(size_t m = 0; m < cur_leader_ptr->group->members.size(); ++m) {
-                mob* m_ptr = cur_leader_ptr->group->members[m];
+            for(size_t m = 0; m < cur_leader_ptrs[player]->group->members.size(); ++m) {
+                mob* m_ptr = cur_leader_ptrs[player]->group->members[m];
                 if(m_ptr->type != held_p_ptr->type) continue;
                 
                 pikmin* p_ptr = (pikmin*) m_ptr;
                 if(p_ptr->maturity == held_p_ptr->maturity) continue;
                 
-                dist d(cur_leader_ptr->pos, p_ptr->pos);
+                dist d(cur_leader_ptrs[player]->pos, p_ptr->pos);
                 if(
                     !closest_members[p_ptr->maturity] ||
                     d < closest_dists[p_ptr->maturity]
@@ -647,7 +709,7 @@ void gameplay::handle_button(
             } while(!finished);
             
             if(new_pikmin) {
-                cur_leader_ptr->swap_held_pikmin(new_pikmin);
+                cur_leader_ptrs[player]->swap_held_pikmin(new_pikmin);
             }
             
         }
@@ -670,6 +732,7 @@ void gameplay::handle_button(
         
     }
     
+
 }
 
 
@@ -680,159 +743,144 @@ void gameplay::handle_button(
  * ev:   Pointer to the event.
  * func: Pointer to the function to run.
  */
+	
 vector<action_from_event> get_actions_from_event(const ALLEGRO_EVENT &ev) {
 
-    vector<action_from_event> actions;
-    
-    for(size_t p = 0; p < MAX_PLAYERS; p++) {
-        size_t n_controls = controls[p].size();
-        for(size_t c = 0; c < n_controls; ++c) {
-        
-            control_info* con = &controls[p][c];
-            
-            if(
-                con->type == CONTROL_TYPE_KEYBOARD_KEY &&
-                (
-                    ev.type == ALLEGRO_EVENT_KEY_DOWN ||
-                    ev.type == ALLEGRO_EVENT_KEY_UP
-                )
-            ) {
-                if(con->button == ev.keyboard.keycode) {
-                    actions.push_back(
-                        action_from_event(
-                            con->action,
-                            (ev.type == ALLEGRO_EVENT_KEY_DOWN) ? 1 : 0,
-                            p
-                        )
-                    );
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_MOUSE_BUTTON &&
-                (
-                    ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN ||
-                    ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_UP
-                )
-            ) {
-                if(con->button == (signed) ev.mouse.button) {
-                    actions.push_back(
-                        action_from_event(
-                            con->action,
-                            (ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN) ?
-                            1 : 0,
-                            p
-                        )
-                    );
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_MOUSE_WHEEL_UP &&
-                ev.type == ALLEGRO_EVENT_MOUSE_AXES
-            ) {
-                if(ev.mouse.dz > 0) {
-                    actions.push_back(
-                        action_from_event(con->action, ev.mouse.dz, p)
-                    );
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_MOUSE_WHEEL_DOWN &&
-                ev.type == ALLEGRO_EVENT_MOUSE_AXES
-            ) {
-                if(ev.mouse.dz < 0) {
-                    actions.push_back(
-                        action_from_event(con->action, -ev.mouse.dz, p)
-                    );
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_MOUSE_WHEEL_LEFT &&
-                ev.type == ALLEGRO_EVENT_MOUSE_AXES
-            ) {
-                if(ev.mouse.dw < 0) {
-                    actions.push_back(
-                        action_from_event(con->action, -ev.mouse.dw, p)
-                    );
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_MOUSE_WHEEL_RIGHT &&
-                ev.type == ALLEGRO_EVENT_MOUSE_AXES
-            ) {
-                if(ev.mouse.dw > 0) {
-                    actions.push_back(
-                        action_from_event(con->action, ev.mouse.dw, p)
-                    );
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_JOYSTICK_BUTTON &&
-                (
-                    ev.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_DOWN ||
-                    ev.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_UP
-                )
-            ) {
-                if(
-                    con->device_nr == joystick_numbers[ev.joystick.id] &&
-                    (signed) con->button == ev.joystick.button
-                ) {
-                    actions.push_back(
-                        action_from_event(
-                            con->action,
-                            (ev.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_DOWN) ?
-                            1 : 0,
-                            p
-                        )
-                    );
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_JOYSTICK_AXIS_POS &&
-                ev.type == ALLEGRO_EVENT_JOYSTICK_AXIS
-            ) {
-                if(
-                    con->device_nr == joystick_numbers[ev.joystick.id] &&
-                    con->stick == ev.joystick.stick &&
-                    con->axis == ev.joystick.axis
-                ) {
-                    if(ev.joystick.pos >= 0) {
-                        actions.push_back(
-                            action_from_event(con->action, ev.joystick.pos, p)
-                        );
-                    } else {
-                        //Makes it so that, for instance, quickly tilting the
-                        //stick left will also send a "tilt right" event of 0.
-                        actions.push_back(
-                            action_from_event(con->action, 0, p)
-                        );
-                    }
-                }
-                
-            } else if(
-                con->type == CONTROL_TYPE_JOYSTICK_AXIS_NEG &&
-                ev.type == ALLEGRO_EVENT_JOYSTICK_AXIS
-            ) {
-                if(
-                    con->device_nr == joystick_numbers[ev.joystick.id] &&
-                    con->stick == ev.joystick.stick &&
-                    con->axis == ev.joystick.axis
-                ) {
-                    if(ev.joystick.pos <= 0) {
-                        actions.push_back(
-                            action_from_event(con->action, -ev.joystick.pos, p)
-                        );
-                    } else {
-                        //Makes it so that, for instance, quickly tilting the
-                        //stick left will also send a "tilt right" event of 0.
-                        actions.push_back(
-                            action_from_event(con->action, 0, p)
-                        );
-                    }
-                }
-            }
-        }
-        
-    }
+		vector<action_from_event> actions;
+
+	
+		for (size_t p = 0; p < max_players; p++) {
+			size_t n_controls = controls[p].size();
+			for (size_t c = 0; c < n_controls; ++c) {
+
+				control_info* con = &controls[p][c];
+
+				if (
+					con->type == CONTROL_TYPE_KEYBOARD_KEY &&
+					(
+						ev.type == ALLEGRO_EVENT_KEY_DOWN ||
+						ev.type == ALLEGRO_EVENT_KEY_UP
+						)
+					) {
+					if (con->button == ev.keyboard.keycode) {
+						actions.push_back(
+							action_from_event(
+								con->action,
+								(ev.type == ALLEGRO_EVENT_KEY_DOWN) ? 1 : 0,
+								p
+							)
+						);
+					}
+
+				}
+				else if (
+					con->type == CONTROL_TYPE_MOUSE_BUTTON &&
+					(
+						ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN ||
+						ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_UP
+						)
+					) {
+					if (con->button == (signed)ev.mouse.button) {
+						actions.push_back(
+							action_from_event(
+								con->action,
+								(ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN) ?
+								1 : 0,
+								p
+							)
+						);
+					}
+
+				}
+				else if (
+					con->type == CONTROL_TYPE_MOUSE_WHEEL_UP &&
+					ev.type == ALLEGRO_EVENT_MOUSE_AXES
+					) {
+					if (ev.mouse.dz > 0) {
+						actions.push_back(
+							action_from_event(con->action, ev.mouse.dz, p)
+						);
+					}
+
+				}
+				else if (
+					con->type == CONTROL_TYPE_MOUSE_WHEEL_DOWN &&
+					ev.type == ALLEGRO_EVENT_MOUSE_AXES
+					) {
+					if (ev.mouse.dz < 0) {
+						actions.push_back(
+							action_from_event(con->action, -ev.mouse.dz, p)
+						);
+					}
+
+				}
+				else if (
+					con->type == CONTROL_TYPE_MOUSE_WHEEL_LEFT &&
+					ev.type == ALLEGRO_EVENT_MOUSE_AXES
+					) {
+					if (ev.mouse.dw < 0) {
+						actions.push_back(
+							action_from_event(con->action, -ev.mouse.dw, p)
+						);
+					}
+
+				}
+				else if (
+					con->type == CONTROL_TYPE_MOUSE_WHEEL_RIGHT &&
+					ev.type == ALLEGRO_EVENT_MOUSE_AXES
+					) {
+					if (ev.mouse.dw > 0) {
+						actions.push_back(
+							action_from_event(con->action, ev.mouse.dw, p)
+						);
+					}
+
+				}
+				else if (
+					con->type == CONTROL_TYPE_JOYSTICK_BUTTON &&
+					(
+						ev.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_DOWN ||
+						ev.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_UP
+						)
+					) {
+					if (
+						con->device_nr == joystick_numbers[ev.joystick.id] &&
+						(signed)con->button == ev.joystick.button
+						) {
+						actions.push_back(
+							action_from_event(
+								con->action,
+								(ev.type == ALLEGRO_EVENT_JOYSTICK_BUTTON_DOWN) ?
+								1 : 0,
+								p
+							)
+						);
+					}
+					 }
+
+				else if (
+					ev.type == ALLEGRO_EVENT_JOYSTICK_AXIS && con->type == CONTROL_TYPE_JOYSTICK_AXIS
+					) {
+					if (
+						con->device_nr == joystick_numbers[ev.joystick.id] &&
+						con->stick == ev.joystick.stick &&
+						con->axis == ev.joystick.axis
+						) {
+						if (ev.joystick.pos > 0.1 || ev.joystick.pos < -0.1) {
+							actions.push_back(
+								action_from_event(con->action, ev.joystick.pos, p)
+							);
+						}
+						else actions.push_back(action_from_event(con->action, 0, p));
+					}
+
+
+
+				}
+			}
+
+		}
+	
     
     return actions;
     
@@ -887,16 +935,9 @@ control_info::control_info(unsigned char action, const string &s) :
             button = s2i(parts[2]);
         }
         
-    } else if(parts[0] == "jap") { //Joystick axis, positive.
+    } else if(parts[0] == "jap") {
         if(n_parts > 3) {
-            type = CONTROL_TYPE_JOYSTICK_AXIS_POS;
-            device_nr = s2i(parts[1]);
-            stick = s2i(parts[2]);
-            axis = s2i(parts[3]);
-        }
-    } else if(parts[0] == "jan") { //Joystick axis, negative.
-        if(n_parts > 3) {
-            type = CONTROL_TYPE_JOYSTICK_AXIS_NEG;
+            type = CONTROL_TYPE_JOYSTICK_AXIS;
             device_nr = s2i(parts[1]);
             stick = s2i(parts[2]);
             axis = s2i(parts[3]);
@@ -928,10 +969,8 @@ string control_info::stringify() {
         return "mwr";
     } else if(type == CONTROL_TYPE_JOYSTICK_BUTTON) {
         return "jb_" + i2s(device_nr) + "_" + i2s(button);
-    } else if(type == CONTROL_TYPE_JOYSTICK_AXIS_POS) {
+    } else if(type == CONTROL_TYPE_JOYSTICK_AXIS) {
         return "jap_" + i2s(device_nr) + "_" + i2s(stick) + "_" + i2s(axis);
-    } else if(type == CONTROL_TYPE_JOYSTICK_AXIS_NEG) {
-        return "jan_" + i2s(device_nr) + "_" + i2s(stick) + "_" + i2s(axis);
     }
     
     return "";

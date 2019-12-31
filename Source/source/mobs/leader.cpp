@@ -22,12 +22,13 @@
  */
 leader::leader(const point &pos, leader_type* type, const float angle) :
     mob(pos, type, angle),
-    lea_type(type),
+    lea_type(type),whistling(false),whistle_fade_radius(whistle_fade_radiuse),whistle_fade_timer(whistle_fade_timere),
     auto_plucking(false),
     pluck_target(nullptr),
     queued_pluck_cancel(false),
-    is_in_walking_anim(false) {
-    
+    is_in_walking_anim(false),
+	playernum(-1) {
+
     team = MOB_TEAM_PLAYER_1; //TODO.
     invuln_period = timer(LEADER_INVULN_PERIOD);
     
@@ -57,7 +58,7 @@ void leader::dismiss() {
     float base_angle;
     
     //First, calculate what direction the group should be dismissed to.
-    if(group_move_magnitude > 0) {
+    if(group_move_magnitude[pnum] > 0) {
         //If the leader's moving the group,
         //they should be dismissed in that direction.
         base_angle = group_move_angle;
@@ -431,7 +432,7 @@ void leader::signal_group_move_start() {
 void leader::start_whistling() {
     lea_type->sfx_whistle.play(0, false);
     
-    for(unsigned char d = 0; d < 6; ++d) whistle_dot_radius[d] = -1;
+    for(unsigned char d = 0; d < 6; ++d) whistle_dot_radius[playernum][d] = -1;
     whistle_fade_timer.start();
     whistle_fade_radius = 0;
     whistling = true;
@@ -450,21 +451,21 @@ void leader::stop_whistling() {
     lea_type->sfx_whistle.stop();
     
     whistle_fade_timer.start();
-    whistle_fade_radius = whistle_radius;
+    whistle_fade_radius = whistle_radius[playernum];
     
     whistling = false;
-    whistle_radius = 0;
+    whistle_radius[playernum] = 0;
 }
 
 
 /* ----------------------------------------------------------------------------
  * Switch active leader.
  */
-void change_to_next_leader(const bool forward, const bool force_success) {
+void leader::change_to_next_leader(const bool forward, const bool force_success) {
     if(leaders.size() == 1) return;
     
     if(
-        !cur_leader_ptr->fsm.get_event(LEADER_EVENT_UNFOCUSED) &&
+        !cur_leader_ptrs[playernum]->fsm.get_event(LEADER_EVENT_UNFOCUSED) &&
         !force_success
     ) {
         //This leader isn't ready to be switched out of. Forget it.
@@ -477,40 +478,45 @@ void change_to_next_leader(const bool forward, const bool force_success) {
     //If we return to the current leader without anything being
     //changed, then stop trying; no leader can be switched to.
     
-    size_t new_leader_nr = cur_leader_nr;
+    size_t new_leader_nr = cur_leader_nrs[playernum] ;
     leader* new_leader_ptr = NULL;
     bool searching = true;
-    size_t original_leader_nr = cur_leader_nr;
+    size_t original_leader_nr = cur_leader_nrs[playernum] ;
     bool cant_find_new_leader = false;
-    
+
     while(searching) {
-        new_leader_nr =
+		bool continuesig = false;
+		new_leader_nr =
             sum_and_wrap(new_leader_nr, (forward ? 1 : -1), leaders.size());
         new_leader_ptr = leaders[new_leader_nr];
-        
+		for (size_t o = 0; o < max_players; ++o) {
+			if (o == playernum) continue;
+			if (new_leader_ptr == cur_leader_ptrs[o]) continuesig = true;
+		}
+		if (continuesig == true) continue;
         if(new_leader_nr == original_leader_nr) {
             //Back to the original; stop trying.
             cant_find_new_leader = true;
             searching = false;
         }
-        
+		new_leader_ptr->playernum = playernum;
         new_leader_ptr->fsm.run_event(LEADER_EVENT_FOCUSED);
         
         //If after we called the event, the leader is the same,
         //then that means the leader can't be switched to.
         //Try a new one.
-        if(cur_leader_nr != original_leader_nr) {
+        if(cur_leader_nrs[playernum]  != original_leader_nr) {
             searching = false;
         }
     }
-    
+
     if(cant_find_new_leader && force_success) {
         //Ok, we need to force a leader to accept the focus. Let's do so.
-        cur_leader_nr =
+        cur_leader_nrs[playernum]  =
             sum_and_wrap(new_leader_nr, (forward ? 1 : -1), leaders.size());
-        cur_leader_ptr = leaders[cur_leader_nr];
+        cur_leader_ptrs[playernum] = leaders[cur_leader_nrs[playernum] ];
         
-        cur_leader_ptr->fsm.set_state(LEADER_STATE_ACTIVE);
+        cur_leader_ptrs[playernum]->fsm.set_state(LEADER_STATE_ACTIVE);
     }
 }
 
@@ -532,7 +538,7 @@ void leader::tick_class_specifics() {
         bool must_reassign_spots = false;
         
         bool is_moving_group =
-            (group_move_magnitude && cur_leader_ptr == this);
+            (group_move_magnitude[pnum] && cur_leader_ptrs[playernum] == this);
             
         if(
             dist(group->get_average_member_pos(), pos) >
@@ -567,14 +573,14 @@ void leader::tick_class_specifics() {
                     );
                 group->anchor = pos + move_anchor_offset;
                 
-                float intensity_dist = cursor_max_dist * group_move_magnitude;
+                float intensity_dist = cursor_max_dist * group_move_magnitude[pnum];
                 al_translate_transform(
                     &group->transform, -GROUP_MOVE_MARGIN, 0
                 );
                 al_scale_transform(
                     &group->transform,
                     intensity_dist / (group->radius * 2),
-                    1 - (GROUP_MOVE_VERTICAL_SCALE * group_move_magnitude)
+                    1 - (GROUP_MOVE_VERTICAL_SCALE * group_move_magnitude[pnum])
                 );
                 al_rotate_transform(
                     &group->transform,
@@ -629,24 +635,25 @@ void leader::tick_class_specifics() {
  * Makes the current leader grab the closest group member of the standby type.
  * Returns true on success, false on failure.
  */
-bool grab_closest_group_member() {
-    if(closest_group_member) {
+bool leader::grab_closest_group_member() {
+    if(closest_group_member[playernum]) {
         mob_event* grabbed_ev =
-            closest_group_member->fsm.get_event(
+            closest_group_member[playernum]->fsm.get_event(
                 MOB_EVENT_GRABBED_BY_FRIEND
             );
+		
         mob_event* grabber_ev =
-            cur_leader_ptr->fsm.get_event(
+            cur_leader_ptrs[playernum]->fsm.get_event(
                 LEADER_EVENT_HOLDING
             );
         if(grabber_ev && grabbed_ev) {
-            cur_leader_ptr->fsm.run_event(
+            cur_leader_ptrs[playernum]->fsm.run_event(
                 LEADER_EVENT_HOLDING,
-                (void*) closest_group_member
+                (void*) closest_group_member[playernum]
             );
             grabbed_ev->run(
-                closest_group_member,
-                (void*) closest_group_member
+                closest_group_member[playernum],
+                (void*) closest_group_member[playernum]
             );
             return true;
         }
@@ -663,70 +670,73 @@ bool grab_closest_group_member() {
  * and more mature one.
  * NULL if there is no member of that subgroup available.
  */
-void update_closest_group_member() {
-    //Closest members so far for each maturity.
-    dist closest_dists[N_MATURITIES];
-    mob* closest_ptrs[N_MATURITIES];
-    for(unsigned char m = 0; m < N_MATURITIES; ++m) {
-        closest_ptrs[m] = NULL;
-    }
-    
-    closest_group_member = NULL;
-    
-    //Fetch the closest, for each maturity.
-    size_t n_members = cur_leader_ptr->group->members.size();
-    for(size_t m = 0; m < n_members; ++m) {
-    
-        mob* member_ptr = cur_leader_ptr->group->members[m];
-        if(
-            member_ptr->subgroup_type_ptr !=
-            cur_leader_ptr->group->cur_standby_type
-        ) {
-            continue;
-        }
-        
-        unsigned char maturity = 0;
-        if(member_ptr->type->category->id == MOB_CATEGORY_PIKMIN) {
-            maturity = ((pikmin*) member_ptr)->maturity;
-        }
-        
-        dist d(cur_leader_ptr->pos, member_ptr->pos);
-        
-        if(!closest_ptrs[maturity] || d < closest_dists[maturity]) {
-            closest_dists[maturity] = d;
-            closest_ptrs[maturity] = member_ptr;
-        }
-    }
-    
-    //Now, try to get the one with the highest maturity within reach.
-    dist closest_dist;
-    for(unsigned char m = 0; m < N_MATURITIES; ++m) {
-        if(!closest_ptrs[2 - m]) continue;
-        if(closest_dists[2 - m] > pikmin_grab_range) continue;
-        closest_group_member = closest_ptrs[2 - m];
-        closest_dist = closest_dists[2 - m];
-        break;
-    }
-    
-    if(!closest_group_member) {
-        //Couldn't find any within reach? Then just set it to the closest one.
-        //Maturity is irrelevant for this case.
-        for(unsigned char m = 0; m < N_MATURITIES; ++m) {
-            if(!closest_ptrs[m]) continue;
-            
-            if(!closest_group_member || closest_dists[m] < closest_dist) {
-                closest_group_member = closest_ptrs[m];
-                closest_dist = closest_dists[m];
-            }
-        }
-        
-    }
-    
-    if(fabs(closest_group_member->z - cur_leader_ptr->z) > SECTOR_STEP) {
-        //If the group member is beyond a step, it's obviously above or below
-        //a wall, compared to the leader. No grabbing allowed.
-        closest_group_member_distant = true;
-    } else {
-        closest_group_member_distant = closest_dist > pikmin_grab_range;
-    }
-}
+void leader::update_closest_group_member() {
+ //Closest members so far for each maturity.
+
+		dist closest_dists[N_MATURITIES];
+		mob* closest_ptrs[N_MATURITIES];
+		for (unsigned char m = 0; m < N_MATURITIES; ++m) {
+			closest_ptrs[m] = NULL;
+		}
+
+		closest_group_member[pnum] = NULL;
+
+		//Fetch the closest, for each maturity.
+		size_t n_members = cur_leader_ptrs[playernum]->group->members.size();
+		for (size_t m = 0; m < n_members; ++m) {
+
+			mob* member_ptr = cur_leader_ptrs[playernum]->group->members[m];
+			if (
+				member_ptr->subgroup_type_ptr !=
+				cur_leader_ptrs[playernum]->group->cur_standby_type
+				) {
+				continue;
+			}
+
+			unsigned char maturity = 0;
+			if (member_ptr->type->category->id == MOB_CATEGORY_PIKMIN) {
+				maturity = ((pikmin*)member_ptr)->maturity;
+			}
+
+			dist d(cur_leader_ptrs[playernum]->pos, member_ptr->pos);
+
+			if (!closest_ptrs[maturity] || d < closest_dists[maturity]) {
+				closest_dists[maturity] = d;
+				closest_ptrs[maturity] = member_ptr;
+			}
+		}
+
+		//Now, try to get the one with the highest maturity within reach.
+		dist closest_dist;
+		for (unsigned char m = 0; m < N_MATURITIES; ++m) {
+			if (!closest_ptrs[2 - m]) continue;
+			if (closest_dists[2 - m] > pikmin_grab_range) continue;
+			closest_group_member[pnum] = closest_ptrs[2 - m];
+			closest_dist = closest_dists[2 - m];
+			break;
+		}
+
+		if (!closest_group_member[pnum]) {
+			//Couldn't find any within reach? Then just set it to the closest one.
+			//Maturity is irrelevant for this case.
+			for (unsigned char m = 0; m < N_MATURITIES; ++m) {
+				if (!closest_ptrs[m]) continue;
+
+				if (!closest_group_member[pnum] || closest_dists[m] < closest_dist) {
+					closest_group_member[pnum] = closest_ptrs[m];
+					closest_dist = closest_dists[m];
+				}
+			}
+
+		}
+
+		if (fabs(closest_group_member[pnum]->z - cur_leader_ptrs[playernum]->z) > SECTOR_STEP) {
+			//If the group member is beyond a step, it's obviously above or below
+			//a wall, compared to the leader. No grabbing allowed.
+			closest_group_member_distant[pnum] = true;
+		}
+		else {
+			closest_group_member_distant[pnum] = closest_dist > pikmin_grab_range;
+		}
+	}
+

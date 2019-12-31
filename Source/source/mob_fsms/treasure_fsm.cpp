@@ -29,6 +29,9 @@ void treasure_fsm::create_fsm(mob_type* typ) {
         efc.new_event(MOB_EVENT_LANDED); {
             efc.run(treasure_fsm::stand_still);
         }
+		efc.new_event(MOB_EVENT_RECEIVE_MESSAGE); {
+			efc.run(treasure_fsm::stop);
+		}
         efc.new_event(MOB_EVENT_CARRIER_ADDED); {
             efc.run(gen_mob_fsm::handle_carrier_added);
             efc.run(gen_mob_fsm::check_carry_begin);
@@ -49,6 +52,9 @@ void treasure_fsm::create_fsm(mob_type* typ) {
             efc.run(gen_mob_fsm::handle_carrier_added);
             efc.run(gen_mob_fsm::check_carry_begin);
         }
+		efc.new_event(MOB_EVENT_RECEIVE_MESSAGE); {
+			efc.run(treasure_fsm::stop);
+		}
         efc.new_event(MOB_EVENT_CARRIER_REMOVED); {
             efc.run(gen_mob_fsm::handle_carrier_removed);
             efc.run(gen_mob_fsm::check_carry_begin);
@@ -78,6 +84,9 @@ void treasure_fsm::create_fsm(mob_type* typ) {
         efc.new_event(MOB_EVENT_ON_ENTER); {
             efc.run(gen_mob_fsm::carry_become_stuck);
         }
+		efc.new_event(MOB_EVENT_RECEIVE_MESSAGE); {
+			efc.run(treasure_fsm::stop);
+		}
         efc.new_event(MOB_EVENT_ON_LEAVE); {
             efc.run(gen_mob_fsm::carry_stop_being_stuck);
         }
@@ -135,6 +144,15 @@ void treasure_fsm::respawn(mob* m, void* info1, void* info2) {
  * When the treasure should lose its momentum and stand still.
  */
 void treasure_fsm::stand_still(mob* m, void* info1, void* info2) {
-    m->stop_chasing();
-    m->stop_turning();
+	if (m->breadbug == false) {
+		m->stop_chasing();
+		m->stop_turning();
+	}
+}
+void treasure_fsm::stop(mob* m, void* info1, void* info2) {
+	m->breadbug = false;
+	m->stop_circling();
+		m->stop_chasing();
+		m->stop_turning();
+	
 }

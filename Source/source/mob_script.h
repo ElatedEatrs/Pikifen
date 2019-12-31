@@ -38,6 +38,8 @@ enum MOB_EVENT_TYPES {
     MOB_EVENT_ON_ENTER,
     //When the state is left.
     MOB_EVENT_ON_LEAVE,
+	//When the mob is near something, requires a check pos action?
+	MOB_EVENT_ON_NEAR_HOME,
     //When the game ticks a frame.
     MOB_EVENT_ON_TICK,
     
@@ -77,10 +79,9 @@ enum MOB_EVENT_TYPES {
     MOB_EVENT_REACHED_DESTINATION,
     //When it receives a message from another mob.
     MOB_EVENT_RECEIVE_MESSAGE,
-	//when it receive a message from it's bond.
-	MOB_EVENT_RECEIVE_MESSAGEBOND,
     //When it is safely released from the leader's/enemy's grasp.
     MOB_EVENT_RELEASED,
+	MOB_EVENT_OPPOSING_LEADER_CALL,
     //When it gets touched by a leader.
     MOB_EVENT_TOUCHED_ACTIVE_LEADER,
     //When it touches a hazard (sector or hitbox).
@@ -99,7 +100,10 @@ enum MOB_EVENT_TYPES {
     MOB_EVENT_WEIGHT_ADDED,
     //When weight has been removed from on top of it. Only if mob is walkable.
     MOB_EVENT_WEIGHT_REMOVED,
-    
+    //Cutscene_start
+	MOB_EVENT_CUTSCENE_START,
+	//Cutscene_end
+	MOB_EVENT_CUTSCENE_END,
     //More internal script stuff.
     
     //When it is plucked off the ground (Pikmin only).

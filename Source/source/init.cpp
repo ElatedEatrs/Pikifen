@@ -25,6 +25,7 @@
 #include "editors/area_editor/editor.h"
 #include "functions.h"
 #include "gameplay.h"
+#include "endofday.h"
 #include "game_state.h"
 #include "menus.h"
 #include "mob_categories/bouncer_category.h"
@@ -44,6 +45,7 @@
 #include "mob_categories/resource_category.h"
 #include "mob_categories/scale_category.h"
 #include "mob_categories/ship_category.h"
+#include "mob_categories/system_category.h"
 #include "mob_categories/tool_category.h"
 #include "mob_categories/track_category.h"
 #include "mob_categories/treasure_category.h"
@@ -59,6 +61,7 @@ void init_allegro() {
     if(!al_init()) {
         report_fatal_error("Could not initialize Allegro!");
     }
+	
     if(!al_install_mouse()) {
         report_fatal_error("Could not install the Allegro mouse module!");
     }
@@ -131,6 +134,7 @@ void init_controls() {
     buttons.add(
         BUTTON_NONE, "---", "", ""
     );
+
     buttons.add(
         BUTTON_THROW, "Throw", "throw", "mb_1"
     );
@@ -149,6 +153,12 @@ void init_controls() {
     buttons.add(
         BUTTON_DOWN, "Down", "move_down", "k_19"
     );
+	buttons.add(BUTTON_MOVE_Y, "Move_y", "move_y", "");
+	buttons.add(BUTTON_MOVE_X, "Move_x", "move_x", "");
+	buttons.add(BUTTON_CURSOR_Y, "cursor_y", "cursor_y", "");
+	buttons.add(BUTTON_CURSOR_X, "cursor_x", "cursor_x", "");
+	buttons.add(BUTTON_GROUP_Y, "group_y", "group_y", "");
+	buttons.add(BUTTON_GROUP_X, "group_x", "group_x", "");
     buttons.add(
         BUTTON_CURSOR_RIGHT, "Cursor right", "cursor_right", ""
     );
@@ -227,6 +237,12 @@ void init_controls() {
     buttons.add(
         BUTTON_PAUSE, "Pause", "pause", "k_59"
     );
+	buttons.add(
+		BUTTON_MENU_X, "Menu x", "menu_x", ""
+	);
+	buttons.add(
+		BUTTON_MENU_Y, "Menu y", "menu_y", ""
+	);
     buttons.add(
         BUTTON_MENU_RIGHT, "Menu right", "menu_right", "k_83"
     );
@@ -246,7 +262,7 @@ void init_controls() {
         BUTTON_MENU_BACK, "Menu back", "menu_back", "k_59"
     );
     
-    controls.assign(MAX_PLAYERS, vector<control_info>());
+    controls.assign(max_players, vector<control_info>());
     
     //Populate the controls information with some default controls for player 1.
     //If the options are loaded successfully, these controls are overwritten.
@@ -301,11 +317,15 @@ void init_event_things(
     if(window_position_hack) al_set_new_window_position(64, 64);
     if(scr_fullscreen) {
         al_set_new_display_flags(
-            al_get_new_display_flags() | ALLEGRO_FULLSCREEN
+            al_get_new_display_flags() | ALLEGRO_FULLSCREEN | ALLEGRO_DIRECT3D_INTERNAL
         );
-    }
+	}
+	else {
+		al_set_new_display_flags(
+			al_get_new_display_flags() & ALLEGRO_DIRECT3D_INTERNAL);
+	}
     display = al_create_display(scr_w, scr_h);
-    
+	
     //It's possible that this resolution is not valid for fullscreen.
     //Detect this and try again in windowed.
     if(!display && scr_fullscreen) {
@@ -319,11 +339,10 @@ void init_event_things(
         intended_scr_fullscreen = false;
         save_options();
         al_set_new_display_flags(
-            al_get_new_display_flags() & ~ALLEGRO_FULLSCREEN
+            al_get_new_display_flags() & ~ALLEGRO_FULLSCREEN & ALLEGRO_DIRECT3D_INTERNAL
         );
         display = al_create_display(scr_w, scr_h);
     }
-    
     if(!display) {
         report_fatal_error("Could not create a display!");
     }
@@ -358,6 +377,7 @@ void init_game_states() {
     game_states[GAME_STATE_CONTROLS_MENU] = new controls_menu();
     game_states[GAME_STATE_AREA_EDITOR] = new area_editor();
     game_states[GAME_STATE_ANIMATION_EDITOR] = new animation_editor();
+	game_states[GAME_STATE_ENDOFDAY] = new endo();
 }
 
 
@@ -416,42 +436,44 @@ void init_misc() {
     al_identity_transform(&identity_transform);
     
     srand(time(NULL));
-    
-    cursor_save_timer.on_end = [] () {
-        cursor_save_timer.start();
-        cursor_spots.push_back(mouse_cursor_s);
-        if(cursor_spots.size() > CURSOR_SAVE_N_SPOTS) {
-            cursor_spots.erase(cursor_spots.begin());
-        }
-    };
-    cursor_save_timer.start();
-    
-    group_move_next_arrow_timer.on_end = [] () {
-        group_move_next_arrow_timer.start();
-        group_move_arrows.push_back(0);
-    };
-    group_move_next_arrow_timer.start();
-    
-    whistle_next_dot_timer.on_end = [] () {
-        whistle_next_dot_timer.start();
-        unsigned char dot = 255;
-        for(unsigned char d = 0; d < 6; ++d) { //Find WHAT dot to add.
-            if(whistle_dot_radius[d] == -1) { dot = d; break;}
-        }
-        
-        if(dot != 255) whistle_dot_radius[dot] = 0;
-    };
-    whistle_next_dot_timer.start();
-    
-    whistle_next_ring_timer.on_end = [] () {
-        whistle_next_ring_timer.start();
-        whistle_rings.push_back(0);
-        whistle_ring_colors.push_back(whistle_ring_prev_color);
-        whistle_ring_prev_color =
-            sum_and_wrap(whistle_ring_prev_color, 1, N_WHISTLE_RING_COLORS);
-    };
-    whistle_next_ring_timer.start();
-    
+	for (size_t o = 0; o < max_players; o++) {
+		pnum = o;
+		cursor_save_timer.on_end = []() {
+			cursor_save_timer.start();
+			cursor_spots[pnum].push_back(mouse_cursor_s[pnum]);
+			if (cursor_spots[pnum].size() > CURSOR_SAVE_N_SPOTS) {
+				cursor_spots[pnum].erase(cursor_spots[pnum].begin());
+			}
+		};
+		cursor_save_timer.start();
+
+		group_move_next_arrow_timer.on_end = []() {
+			group_move_next_arrow_timer.start();
+			group_move_arrows[pnum].push_back(0);
+		};
+		group_move_next_arrow_timer.start();
+
+		whistle_next_dot_timer[pnum].on_end = []() {
+			whistle_next_dot_timer[pnum].start();
+			unsigned char dot = 255;
+			for (unsigned char d = 0; d < 6; ++d) { //Find WHAT dot to add.
+				if (whistle_dot_radius[pnum][d] == -1) { dot = d; break; }
+			}
+
+			if (dot != 255) whistle_dot_radius[pnum][dot] = 0;
+		};
+		whistle_next_dot_timer[pnum].start();
+
+		whistle_next_ring_timer[pnum].on_end = []() {
+			whistle_next_ring_timer[pnum].start();
+			whistle_rings[pnum].push_back(0);
+			whistle_ring_colors[pnum].push_back(whistle_ring_prev_color[pnum]);
+			whistle_ring_prev_color[pnum] =
+				sum_and_wrap(whistle_ring_prev_color[pnum], 1, N_WHISTLE_RING_COLORS);
+		};
+		whistle_next_ring_timer[pnum].start();
+	}
+	pnum = 0;
     particles = particle_manager(max_particles);
     
     zoom_mid_level = clamp(zoom_mid_level, zoom_min_level, zoom_max_level);
@@ -511,7 +533,39 @@ void init_mob_actions() {
         mob_action_runners::arachnorb_plan_logic,
         mob_action_loaders::arachnorb_plan_logic
     );
-    
+	reg_param("mob",MOB_ACTION_PARAM_INT, false,false)
+	reg_action(
+		MOB_ACTION_LOCKON,
+		"chase_mob_on_path",
+		mob_action_runners::breadbug_goto,
+		nullptr
+	);
+	reg_param("variable name", MOB_ACTION_PARAM_STRING, true, false);
+	reg_action(
+		MOB_ACTION_GET_RANDOM_MOB,
+		"get_random_mob",
+		mob_action_runners::get_random_mob,
+		nullptr
+	);
+	reg_param("mob", MOB_ACTION_PARAM_INT, false, false)
+		reg_action(
+			MOB_ACTION_PICKUP,
+			"pick_up_and_return_home",
+			mob_action_runners::pick_up,
+			nullptr
+		);
+	reg_action(
+		MOB_ACTION_STOP_CHASER,
+		"drop",
+		mob_action_runners::drop,
+		nullptr
+	);
+	reg_action(
+		MOB_ACTION_HOME_IS_WHERE_THE_HEART_IS,
+		"move_the_home",
+		mob_action_runners::home_is_where_the_heart_is,
+		nullptr
+	);
     reg_param("destination variable", MOB_ACTION_PARAM_STRING, true, false);
     reg_param("operand", MOB_ACTION_PARAM_FLOAT, false, false);
     reg_param("operation", MOB_ACTION_PARAM_ENUM, true, false);
@@ -698,13 +752,15 @@ void init_mob_actions() {
         mob_action_runners::send_message_to_links,
         nullptr
     );
-	reg_param("bond_message", MOB_ACTION_PARAM_STRING, false, false);
-	reg_action(
-		MOB_ACTION_SEND_MESSAGE_TO_BONDS,
-		"send_message_to_bonds",
-		mob_action_runners::send_message_to_bonds,
-		nullptr
-	);
+
+reg_param("sender", MOB_ACTION_PARAM_STRING, false, false);
+    reg_action(
+        MOB_ACTION_BLOCK,
+        "blockorunblock",
+        mob_action_runners::block,
+        nullptr
+    );
+    
     reg_param("distance", MOB_ACTION_PARAM_FLOAT, false, false);
     reg_param("message", MOB_ACTION_PARAM_STRING, false, false);
     reg_action(
@@ -786,7 +842,13 @@ void init_mob_actions() {
         mob_action_runners::set_limb_animation,
         nullptr
     );
-    
+	reg_param("flag", MOB_ACTION_PARAM_STRING, false, false);
+	reg_action(
+		MOB_ACTION_SET_FLAG,
+		"set_game_flag",
+		mob_action_runners::set_flag,
+		mob_action_loaders::set_flag
+	);
     reg_param("reach name", MOB_ACTION_PARAM_ENUM, true, false);
     reg_action(
         MOB_ACTION_SET_NEAR_REACH,
@@ -802,8 +864,14 @@ void init_mob_actions() {
         mob_action_runners::set_state,
         nullptr
     );
-    
-    reg_param("tangible", MOB_ACTION_PARAM_BOOL, false, false);
+	reg_param("system action", MOB_ACTION_PARAM_ENUM, true, false);
+	reg_action(
+		MOB_ACTION_SYSTEM,
+		"system_action",
+		mob_action_runners::psystem_action,
+		mob_action_loaders::psystem_action
+	)
+	reg_param("tangible", MOB_ACTION_PARAM_BOOL, false, false);
     reg_action(
         MOB_ACTION_SET_TANGIBLE,
         "set_tangible",
@@ -1062,6 +1130,9 @@ void init_mob_categories() {
     mob_categories.register_category(
         MOB_CATEGORY_CUSTOM, new custom_category()
     );
+	mob_categories.register_category(
+		MOB_CATEGORY_PSYSTEM, new psystem_category()
+	);
 }
 
 
@@ -1139,7 +1210,6 @@ void destroy_misc() {
     al_destroy_font(font_counter);
     al_destroy_font(font_main);
     al_destroy_font(font_value);
-    
     al_detach_voice(voice);
     al_destroy_mixer(mixer);
     al_destroy_voice(voice);

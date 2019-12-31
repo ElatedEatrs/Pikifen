@@ -107,8 +107,8 @@ void editor::center_camera(
     float width = max_c.x - min_c.x;
     float height = max_c.y - min_c.y;
     
-    cam_pos.x = floor(min_c.x + width  / 2);
-    cam_pos.y = floor(min_c.y + height / 2);
+    cam_pos[pnum].x = floor(min_c.x + width  / 2);
+    cam_pos[pnum].y = floor(min_c.y + height / 2);
     
     float z;
     if(width > height) z = (canvas_br.x - canvas_tl.x) / width;
@@ -445,7 +445,7 @@ void editor::handle_controls(const ALLEGRO_EVENT &ev) {
     
     if(
         ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN &&
-        !is_mouse_in_gui(mouse_cursor_s)
+        !is_mouse_in_gui(mouse_cursor_s[pnum])
     ) {
     
         if(ev.mouse.button == 1) {
@@ -489,7 +489,7 @@ void editor::handle_controls(const ALLEGRO_EVENT &ev) {
         
     } else if(
         ev.type == ALLEGRO_EVENT_MOUSE_BUTTON_DOWN &&
-        is_mouse_in_gui(mouse_cursor_s)
+        is_mouse_in_gui(mouse_cursor_s[pnum])
     ) {
         is_gui_focused = true;
         
@@ -533,7 +533,7 @@ void editor::handle_controls(const ALLEGRO_EVENT &ev) {
         }
         if(
             (ev.mouse.dz != 0 || ev.mouse.dw != 0) &&
-            !is_mouse_in_gui(mouse_cursor_s)
+            !is_mouse_in_gui(mouse_cursor_s[pnum])
         ) {
             handle_mouse_wheel(ev);
         }
@@ -835,9 +835,9 @@ void editor::update_status_bar(
         new_text = status_override_text;
         
     } else {
-        if(is_mouse_in_gui(mouse_cursor_s)) {
+        if(is_mouse_in_gui(mouse_cursor_s[pnum])) {
             lafi::widget* wum =
-                gui->get_widget_under_mouse(mouse_cursor_s.x, mouse_cursor_s.y);
+                gui->get_widget_under_mouse(mouse_cursor_s[pnum].x, mouse_cursor_s[pnum].y);
             if(wum) {
                 new_text = wum->description;
             }
@@ -847,9 +847,9 @@ void editor::update_status_bar(
                 "to show information about it here!)";
         } else if(!omit_coordinates) {
             new_text =
-                "(" + i2s(mouse_cursor_w.x) + "," +
+                "(" + i2s(mouse_cursor_w[pnum].x) + "," +
                 i2s(
-                    reverse_y_coordinate ? -mouse_cursor_w.y : mouse_cursor_w.y
+                    reverse_y_coordinate ? -mouse_cursor_w[pnum].y : mouse_cursor_w[pnum].y
                 ) + ")";
         }
     }
@@ -867,17 +867,17 @@ void editor::update_transformations() {
         (canvas_tl.x + canvas_br.x) / 2.0,
         (canvas_tl.y + canvas_br.y) / 2.0
     );
-    world_to_screen_transform = identity_transform;
+    world_to_screen_transform[pnum] = identity_transform;
     al_translate_transform(
-        &world_to_screen_transform,
-        -cam_pos.x + canvas_center.x / cam_zoom,
-        -cam_pos.y + canvas_center.y / cam_zoom
+        &world_to_screen_transform[pnum],
+        -cam_pos[pnum].x + canvas_center.x / cam_zoom,
+        -cam_pos[pnum].y + canvas_center.y / cam_zoom
     );
-    al_scale_transform(&world_to_screen_transform, cam_zoom, cam_zoom);
+    al_scale_transform(&world_to_screen_transform[pnum], cam_zoom, cam_zoom);
     
     //Screen coordinates to world coordinates.
-    screen_to_world_transform = world_to_screen_transform;
-    al_invert_transform(&screen_to_world_transform);
+    screen_to_world_transform[pnum] = world_to_screen_transform[pnum];
+    al_invert_transform(&screen_to_world_transform[pnum]);
 }
 
 
@@ -890,20 +890,20 @@ void editor::zoom(const float new_zoom, const bool anchor_cursor) {
     
     if(anchor_cursor) {
         //Keep a backup of the old mouse coordinates.
-        point old_mouse_pos = mouse_cursor_w;
+        point old_mouse_pos = mouse_cursor_w[pnum];
         
         //Figure out where the mouse will be after the zoom.
         update_transformations();
-        mouse_cursor_w = mouse_cursor_s;
+        mouse_cursor_w[pnum] = mouse_cursor_s[pnum];
         al_transform_coordinates(
-            &screen_to_world_transform,
-            &mouse_cursor_w.x, &mouse_cursor_w.y
+            &screen_to_world_transform[pnum],
+            &mouse_cursor_w[pnum].x, &mouse_cursor_w[pnum].y
         );
         
         //Readjust the transformation by shifting the camera
         //so that the cursor ends up where it was before.
-        cam_pos.x += (old_mouse_pos.x - mouse_cursor_w.x);
-        cam_pos.y += (old_mouse_pos.y - mouse_cursor_w.y);
+        cam_pos[pnum].x += (old_mouse_pos.x - mouse_cursor_w[pnum].x);
+        cam_pos[pnum].y += (old_mouse_pos.y - mouse_cursor_w[pnum].y);
     }
     
     update_transformations();

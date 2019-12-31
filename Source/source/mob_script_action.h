@@ -21,6 +21,8 @@ enum MOB_ACTION_TYPES {
     MOB_ACTION_UNKNOWN,
     MOB_ACTION_ADD_HEALTH,
     MOB_ACTION_ARACHNORB_PLAN_LOGIC,
+	MOB_ACTION_LOCKON,
+	MOB_ACTION_PICKUP,
     MOB_ACTION_CALCULATE,
     MOB_ACTION_DELETE,
     MOB_ACTION_DRAIN_LIQUID,
@@ -32,19 +34,22 @@ enum MOB_ACTION_TYPES {
     MOB_ACTION_GET_INFO,
     MOB_ACTION_GET_RANDOM_DECIMAL,
     MOB_ACTION_GET_RANDOM_INT,
+	MOB_ACTION_GET_RANDOM_MOB,
+	MOB_ACTION_STOP_CHASER,
+	MOB_ACTION_HOME_IS_WHERE_THE_HEART_IS,
     MOB_ACTION_GOTO,
     MOB_ACTION_IF,
     MOB_ACTION_LABEL,
     MOB_ACTION_MOVE_TO_ABSOLUTE,
     MOB_ACTION_MOVE_TO_RELATIVE,
     MOB_ACTION_MOVE_TO_TARGET,
+	MOB_ACTION_SYSTEM,
     MOB_ACTION_ORDER_RELEASE,
     MOB_ACTION_PLAY_SOUND,
     MOB_ACTION_RECEIVE_STATUS,
     MOB_ACTION_RELEASE,
     MOB_ACTION_REMOVE_STATUS,
     MOB_ACTION_SEND_MESSAGE_TO_LINKS,
-	MOB_ACTION_SEND_MESSAGE_TO_BONDS,
     MOB_ACTION_SEND_MESSAGE_TO_NEARBY,
     MOB_ACTION_SET_ANIMATION,
     MOB_ACTION_SET_FAR_REACH,
@@ -60,6 +65,7 @@ enum MOB_ACTION_TYPES {
     MOB_ACTION_SET_TANGIBLE,
     MOB_ACTION_SET_TEAM,
     MOB_ACTION_SET_TIMER,
+	MOB_ACTION_SET_FLAG,
     MOB_ACTION_SET_VAR,
     MOB_ACTION_SHOW_MESSAGE_FROM_VAR,
     MOB_ACTION_SPAWN,
@@ -80,6 +86,7 @@ enum MOB_ACTION_TYPES {
     MOB_ACTION_TURN_TO_ABSOLUTE,
     MOB_ACTION_TURN_TO_RELATIVE,
     MOB_ACTION_TURN_TO_TARGET,
+    MOB_ACTION_BLOCK,
     
     N_MOB_ACTIONS
 };
@@ -127,23 +134,27 @@ enum MOB_ACTION_GET_INFO_TYPES {
     MOB_ACTION_GET_INFO_LATCHED_PIKMIN_WEIGHT,
     MOB_ACTION_GET_INFO_MESSAGE,
     MOB_ACTION_GET_INFO_MESSAGE_SENDER,
-	MOB_ACTION_GET_INFO_MESSAGEBOND,
-	MOB_ACTION_GET_INFO_MESSAGE_SENDERBOND,
     MOB_ACTION_GET_INFO_MOB_CATEGORY,
     MOB_ACTION_GET_INFO_MOB_TYPE,
     MOB_ACTION_GET_INFO_OTHER_BODY_PART,
     MOB_ACTION_GET_INFO_WEIGHT,
+	MOB_ACTION_GET_INFO_LINK,
+	MOB_ACTION_GET_INFO_FLAG,
 };
 
 //Moving action sub-types.
 enum MOB_ACTION_MOVE_TYPES {
+	MOB_ACTION_MOVE_FOCUS_TO_LINK,
     MOB_ACTION_MOVE_AWAY_FROM_FOCUSED_MOB,
     MOB_ACTION_MOVE_FOCUSED_MOB,
     MOB_ACTION_MOVE_FOCUSED_MOB_POS,
     MOB_ACTION_MOVE_HOME,
     MOB_ACTION_MOVE_ARACHNORB_FOOT_LOGIC,
     MOB_ACTION_MOVE_LINKED_MOB_AVERAGE,
-	MOB_ACTION_MOVE_BONDED_MOB_AVERAGE,
+};
+enum MOB_ACTION_SYSTEM_TYPES {
+	MOB_ACTION_GET_SAFE_PIKMIN,
+	MOB_ACTION_SET_SAFE_ZONES,
 };
 
 enum MOB_ACTION_SET_ANIMATION_OPTIONS {
@@ -248,6 +259,8 @@ struct mob_action_call {
 
 
 namespace mob_action_runners {
+void set_flag(mob_action_run_data &data);
+void block(mob_action_run_data &data);
 void add_health(mob_action_run_data &data);
 void add_health(mob_action_run_data &data);
 void arachnorb_plan_logic(mob_action_run_data &data);
@@ -260,7 +273,13 @@ void get_chomped(mob_action_run_data &data);
 void get_info(mob_action_run_data &data);
 void get_random_decimal(mob_action_run_data &data);
 void get_random_int(mob_action_run_data &data);
+void get_random_mob(mob_action_run_data &data);
+void home_is_where_the_heart_is(mob_action_run_data &data);
+void drop(mob_action_run_data &data);
+void psystem_action(mob_action_run_data &data);
 void goto_function(mob_action_run_data &data);
+void breadbug_goto(mob_action_run_data &data);
+void pick_up(mob_action_run_data &data);
 void if_function(mob_action_run_data &data);
 void move_to_absolute(mob_action_run_data &data);
 void move_to_relative(mob_action_run_data &data);
@@ -271,7 +290,6 @@ void receive_status(mob_action_run_data &data);
 void release(mob_action_run_data &data);
 void remove_status(mob_action_run_data &data);
 void send_message_to_links(mob_action_run_data &data);
-void send_message_to_bonds(mob_action_run_data &data);
 void send_message_to_nearby(mob_action_run_data &data);
 void set_animation(mob_action_run_data &data);
 void set_far_reach(mob_action_run_data &data);
@@ -310,12 +328,14 @@ void turn_to_target(mob_action_run_data &data);
 };
 
 namespace mob_action_loaders {
+bool set_flag(mob_action_call &call);
 bool arachnorb_plan_logic(mob_action_call &call);
 bool calculate(mob_action_call &call);
 bool focus(mob_action_call &call);
 bool get_info(mob_action_call &call);
 bool if_function(mob_action_call &call);
 bool move_to_target(mob_action_call &call);
+bool psystem_action(mob_action_call &call);
 bool receive_status(mob_action_call &call);
 bool remove_status(mob_action_call &call);
 bool set_animation(mob_action_call &call);

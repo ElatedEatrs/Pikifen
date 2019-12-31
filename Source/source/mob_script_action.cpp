@@ -420,11 +420,10 @@ void mob_action_runners::get_info(mob_action_run_data &data) {
     size_t t = s2i(data.args[1]);
     
     switch(t) {
-    case MOB_ACTION_GET_INFO_CHOMPED_PIKMIN: {
-        *var = i2s(data.m->chomping_mobs.size());
-        break;
-        
-    } case MOB_ACTION_GET_INFO_DAY_MINUTES: {
+	case MOB_ACTION_GET_INFO_CHOMPED_PIKMIN: {
+		*var = i2s(data.m->chomping_mobs.size());
+		break;
+	} case MOB_ACTION_GET_INFO_DAY_MINUTES: {
         *var = i2s(day_minutes);
         break;
         
@@ -462,19 +461,7 @@ void mob_action_runners::get_info(mob_action_run_data &data) {
         }
         break;
         
-    } case MOB_ACTION_GET_INFO_MESSAGEBOND: {
-		if (data.call->parent_event == MOB_EVENT_RECEIVE_MESSAGEBOND) {
-			*var = *((string*)(data.custom_data_1));
-		}
-		break;
-
-	} case MOB_ACTION_GET_INFO_MESSAGE_SENDERBOND: {
-		if (data.call->parent_event == MOB_EVENT_RECEIVE_MESSAGEBOND) {
-			*var = ((mob*)(data.custom_data_2))->type->name;
-		}
-		break;
-
-	} case MOB_ACTION_GET_INFO_MOB_CATEGORY: {
+    } case MOB_ACTION_GET_INFO_MOB_CATEGORY: {
         if(
             data.call->parent_event == MOB_EVENT_TOUCHED_OBJECT ||
             data.call->parent_event == MOB_EVENT_TOUCHED_OPPONENT ||
@@ -485,7 +472,31 @@ void mob_action_runners::get_info(mob_action_run_data &data) {
         }
         break;
         
-    } case MOB_ACTION_GET_INFO_MOB_TYPE: {
+	}case MOB_ACTION_GET_INFO_LINK: {
+		string bear = "false";
+		string care = "true";
+		if (
+			data.call->parent_event == MOB_EVENT_TOUCHED_OBJECT ||
+			data.call->parent_event == MOB_EVENT_TOUCHED_OPPONENT ||
+			data.call->parent_event == MOB_EVENT_OBJECT_IN_REACH ||
+			data.call->parent_event == MOB_EVENT_OPPONENT_IN_REACH
+			) {
+
+				int midi = ((mob*)(data.custom_data_1))->id;
+			for (size_t l = 0; l < data.m->links.size(); ++l) {
+				if(data.m->links[l]->id == midi){
+					var->assign(care + "");
+					break;
+				}
+				else {
+					var->assign(bear + "");
+				}
+
+			}
+		}
+
+		break;
+	} case MOB_ACTION_GET_INFO_MOB_TYPE: {
         if(
             data.call->parent_event == MOB_EVENT_TOUCHED_OBJECT ||
             data.call->parent_event == MOB_EVENT_TOUCHED_OPPONENT ||
@@ -549,7 +560,11 @@ void mob_action_runners::get_info(mob_action_run_data &data) {
         }
         break;
         
-    }
+	}case MOB_ACTION_GET_INFO_FLAG: {
+		*var = b2s(progressflags[data.args[0]]);
+		break;
+	}
+
     }
 }
 
@@ -570,7 +585,18 @@ void mob_action_runners::get_random_int(mob_action_run_data &data) {
     data.m->vars[data.args[0]] =
         i2s(randomi(s2i(data.args[1]), s2i(data.args[2])));
 }
-
+void mob_action_runners::get_random_mob(mob_action_run_data &data) {
+	
+		int bear;
+			for (bear = 0; bear < mobs.size(); ++bear)
+			if (mobs[bear]->type->category->id == MOB_CATEGORY_ENEMIES ||
+				mobs[bear]->type->category->id == MOB_CATEGORY_PELLETS ||
+				mobs[bear]->type->category->id == MOB_CATEGORY_TREASURES) {
+				break;
+			}
+			if (bear >= mobs.size()) bear = -1;
+		data.m->vars[data.args[0]] = i2s(bear);
+}
 
 /* ----------------------------------------------------------------------------
  * Code for the "if" mob script action.
@@ -646,33 +672,51 @@ void mob_action_runners::move_to_relative(mob_action_run_data &data) {
  * Code for the move to target mob script action.
  */
 void mob_action_runners::move_to_target(mob_action_run_data &data) {
-	size_t t = s2i(data.args[0]);
-
-	switch (t) {
-	case MOB_ACTION_MOVE_AWAY_FROM_FOCUSED_MOB: {
+    size_t t = s2i(data.args[0]);
+    
+    switch(t) {
+    case MOB_ACTION_MOVE_AWAY_FROM_FOCUSED_MOB: {
+        if(data.m->focused_mob) {
+            float a = get_angle(data.m->pos, data.m->focused_mob->pos);
+            point offset = point(2000, 0);
+            offset = rotate_point(offset, a + TAU / 2.0);
+            data.m->chase(data.m->pos + offset, NULL, false);
+        } else {
+            data.m->stop_chasing();
+        }
+        break;
+        
+    } case MOB_ACTION_MOVE_FOCUSED_MOB: {
+        if(data.m->focused_mob) {
+            data.m->chase(point(), &data.m->focused_mob->pos, false);
+        } else {
+            data.m->stop_chasing();
+        }
+        break;
+        
+    } case MOB_ACTION_MOVE_FOCUSED_MOB_POS: {
+        if(data.m->focused_mob) {
+            data.m->chase(data.m->focused_mob->pos, NULL, false);
+        } else {
+            data.m->stop_chasing();
+        }
+        break;
+        
+    } case MOB_ACTION_MOVE_FOCUS_TO_LINK: {
 		if (data.m->focused_mob) {
-			float a = get_angle(data.m->pos, data.m->focused_mob->pos);
-			point offset = point(2000, 0);
-			offset = rotate_point(offset, a + TAU / 2.0);
-			data.m->chase(data.m->pos + offset, NULL, false);
-		}
-		else {
-			data.m->stop_chasing();
-		}
-		break;
-
-	} case MOB_ACTION_MOVE_FOCUSED_MOB: {
-		if (data.m->focused_mob) {
-			data.m->chase(point(), &data.m->focused_mob->pos, false);
-		}
-		else {
-			data.m->stop_chasing();
-		}
-		break;
-
-	} case MOB_ACTION_MOVE_FOCUSED_MOB_POS: {
-		if (data.m->focused_mob) {
-			data.m->chase(data.m->focused_mob->pos, NULL, false);
+			data.m->focused_mob->pos = data.m->links[0]->pos;
+			if(data.m->group){
+				if (!data.m->focused_mob->group->members.empty()) {
+					for (size_t g = 0; g < data.m->focused_mob->group->members.size(); ++g) {
+						mob* m_ptr = data.m->focused_mob->group->members[g];
+						m_ptr->chase_teleport = true;
+						m_ptr->chase_free_move = true;
+						m_ptr->chase(data.m->links[0]->pos, NULL, true);
+						m_ptr->chase_teleport = false;
+						m_ptr->chase_free_move = false;
+					}
+				}
+			}
 		}
 		else {
 			data.m->stop_chasing();
@@ -680,42 +724,29 @@ void mob_action_runners::move_to_target(mob_action_run_data &data) {
 		break;
 
 	} case MOB_ACTION_MOVE_HOME: {
-		data.m->chase(data.m->home, NULL, false);
-		break;
-
-	} case MOB_ACTION_MOVE_ARACHNORB_FOOT_LOGIC: {
-		data.m->arachnorb_foot_move_logic();
-		break;
-
-	} case MOB_ACTION_MOVE_LINKED_MOB_AVERAGE: {
-		if (data.m->groupid = t - 1) {
-			return;
-		}
-
-		point des;
-		for (size_t l = 0; l < data.m->links.size(); ++l) {
-			if (data.m->links[l] != data.m)des += data.m->links[l]->pos;
-		}
-		des = des / data.m->links.size();
-
-		data.m->chase(des, NULL, false);
-		break;
-	} case MOB_ACTION_MOVE_BONDED_MOB_AVERAGE: {
-		if (data.m->bond->mobs.size() == 0) {
-			return;
-		}
-
-		point des;
-		for (size_t l = 0; l < data.m->bond->mobs.size(); ++l) {
-			des += data.m->bond->mobs[l]->pos;
-		}
-		des = des / data.m->bond->mobs.size();
-
-		data.m->chase(des, NULL, false);
-		break;
-	}
-
-	}
+        data.m->chase(data.m->home, NULL, false);
+        break;
+        
+    } case MOB_ACTION_MOVE_ARACHNORB_FOOT_LOGIC: {
+        data.m->arachnorb_foot_move_logic();
+        break;
+        
+    } case MOB_ACTION_MOVE_LINKED_MOB_AVERAGE: {
+        if(data.m->links.empty()) {
+            return;
+        }
+        
+        point des;
+        for(size_t l = 0; l < data.m->links.size(); ++l) {
+            des += data.m->links[l]->pos;
+        }
+        des = des / data.m->links.size();
+        
+        data.m->chase(des, NULL, false);
+        break;
+        
+    }
+    }
 }
 
 
@@ -763,26 +794,244 @@ void mob_action_runners::remove_status(mob_action_run_data &data) {
         }
     }
 }
+void mob_action_runners::block(mob_action_run_data &data){
+bool wig = false;
+for(size_t y = 0; y < data.m->blocked.size(); ++y){
+if(data.args[0] == data.m->blocked[y]){
+data.m->blocked[y].erase();
+wig = true;
+}
+}
+if(wig != true) data.m->blocked.push_back(data.args[0]);
+}
+void mob_action_runners::home_is_where_the_heart_is(mob_action_run_data &data) {
 
+}
+void mob_action_runners::drop(mob_action_run_data &data){
+	if(data.m->breadbugchaser)data.m->breadbugchaser->stop_circling();
+    if (data.m->circling_info) {
+		data.m->stop_circling();
+		data.m->chase(data.m->home, NULL, false);
+	}
+	else if (data.m->path_info) {
+		data.m->stop_following_path();
+	}
+}
+
+void mob_action_runners::pick_up(mob_action_run_data &data) {
+
+	if (data.m->circling_info) {
+		data.m->stop_circling();
+	}
+
+	int var = s2i(data.args[0]);
+
+	if (data.m->focused_mob) {
+		if (data.m->focused_mob->type->category->id == MOB_CATEGORY_ENEMIES ||
+			data.m->focused_mob->type->category->id == MOB_CATEGORY_PELLETS ||
+			data.m->focused_mob->type->category->id == MOB_CATEGORY_TREASURES) {
+			if (data.m->focused_mob->type->category->id == MOB_CATEGORY_ENEMIES && mobs[var]->dead == false) {
+				//null
+			}
+			else {
+				data.m->focused_mob->breadbug = true;
+				data.m->focused_mob->circle_around(data.m, data.m->pos, 100, false, data.m->get_base_speed() + 10, true);
+				data.m->breadbugchaser = data.m->focused_mob;
+				data.m->follow_path(data.m->home, true);
+
+			}
+		}
+
+
+
+
+
+	}else if (mobs[var]->type->category->id == MOB_CATEGORY_ENEMIES ||
+			mobs[var]->type->category->id == MOB_CATEGORY_PELLETS ||
+			mobs[var]->type->category->id == MOB_CATEGORY_TREASURES) {
+	if (mobs[var]->type->category->id == MOB_CATEGORY_ENEMIES && mobs[var]->dead == false) {
+			//null
+		}else {
+			mobs[var]->breadbug = true;
+			data.m->breadbugchaser = mobs[var];
+			mobs[var]->circle_around(data.m, data.m->pos, 100, false, data.m->get_base_speed() + 10, true);
+			data.m->follow_path(data.m->home, true);
+
+		}
+
+	}else  data.m->circle_around(NULL, data.m->home, 100, false, data.m->get_base_speed(), true);
+}
+void mob_action_runners::breadbug_goto(mob_action_run_data &data) {
+	int var = s2i(data.args[0]);
+	data.m->follow_path(mobs[var]->pos, true);
+}
+void mob_action_runners::set_flag(mob_action_run_data &data) {
+	bool swit = progressflags[data.args[0]];
+
+	if (swit == false)progressflags[data.args[0]] = true;
+	else progressflags[data.args[0]] = false;
+}
+bool mob_action_loaders::set_flag(mob_action_call &call) {
+	bool swit = progressflags[call.args[0]];
+	if (swit == NULL) {
+		log_error("this isn't in the config file");
+		return false;
+	}
+	return true;
+}
+void mob_action_runners::psystem_action(mob_action_run_data &data) {
+	size_t t = s2i(data.args[0]);
+
+	if (data.m->type->category->name == "System") {
+		switch (t) {
+		case MOB_ACTION_GET_SAFE_PIKMIN: {
+			if (pikmin_list.empty()) {
+				break;
+			}
+			if (day_minutes < day_minutes_end - 3) break;
+			if (!safeplaces.empty()) {
+				for (size_t s = 0; s < safeplaces.size(); ++s) {
+					mob* s_ptr = safeplaces[s];
+					point safecenter = s_ptr->home;
+					point max = point(safecenter.x + s_ptr->type->territory_radius, safecenter.y);
+					dist safe_distance = dist(safecenter, max);
+					for (size_t p = 0; p < pikmin_list.size(); ++p) {
+						pikmin* p_ptr = pikmin_list[p];
+						if (p_ptr->is_seed_or_sprout == true) {
+							p_ptr->is_safe = true;
+						}
+						dist safefty_factor = dist(safecenter, p_ptr->pos);
+						if (safefty_factor <= safe_distance) {
+							p_ptr->is_safe = true;
+						}
+					}
+
+				}
+
+			}
+			for (size_t l = 0; l < leaders.size(); ++l) {
+				mob* l_ptr = leaders[l];
+				point safecenter = l_ptr->pos;
+				point max = point(safecenter.x + cursor_max_dist, safecenter.y);
+				point max2 = point(safecenter.x + cursor_max_dist * 5, safecenter.y);
+				dist safe_distance = dist(safecenter, max);
+				dist group_safe_distance = dist(safecenter, max2);
+				for (size_t p = 0; p < pikmin_list.size(); ++p) {
+					pikmin* p_ptr = pikmin_list[p];
+					if (p_ptr->is_seed_or_sprout == true) {
+						p_ptr->is_safe = true;
+					}
+					dist safety_factor = dist(safecenter, p_ptr->pos);
+					if (safety_factor <= safe_distance) {
+						p_ptr->is_safe = true;
+					}
+					if (p_ptr->following_group == l_ptr) {
+						if (safety_factor <= group_safe_distance) {
+							p_ptr->is_safe = true;
+						}
+					}
+				}
+			}
+			if (!ships.empty()){
+				for (size_t s = 0; s < ships.size(); ++s) {
+					mob* s_ptr = ships[s];
+					point safecenter = s_ptr->pos;
+					point max = point(safecenter.x + 200, safecenter.y);
+					dist safe_distance = dist(safecenter, max);
+					for (size_t p = 0; p < pikmin_list.size(); ++p) {
+						pikmin* p_ptr = pikmin_list[p];
+						if (p_ptr->is_seed_or_sprout == true) {
+							p_ptr->is_safe = true;
+						}
+						dist safety_factor = dist(safecenter, p_ptr->pos);
+						if (safety_factor <= safe_distance) {
+							p_ptr->is_safe = true;
+						}
+						if (p_ptr->path_info && p_ptr->carrying_mob) {
+							p_ptr->chase_speed = p_ptr->chase_speed * 2;
+						}
+
+
+					}
+				}
+		}
+			if (!onions.empty()) {
+				for (size_t s = 0; s < onions.size(); ++s) {
+					mob* s_ptr = onions[s];
+					point safecenter = s_ptr->pos;
+					point max = point(safecenter.x + 200, safecenter.y);
+					dist safe_distance = dist(safecenter, max);
+					for (size_t p = 0; p < pikmin_list.size(); ++p) {
+						pikmin* p_ptr = pikmin_list[p];
+						if (p_ptr->is_seed_or_sprout == true) {
+							p_ptr->is_safe = true;
+						}
+						dist safety_factor = dist(safecenter, p_ptr->pos);
+						if (safety_factor <= safe_distance) {
+							p_ptr->is_safe = true;
+						}
+						if (p_ptr->path_info && p_ptr->carrying_mob) {
+							p_ptr->chase_speed = p_ptr->chase_speed * 2;
+						}
+
+
+					}
+				}
+			}
+			break;
+		}
+		case MOB_ACTION_SET_SAFE_ZONES: {
+			if (data.m->breadbug == true)break;
+			else {
+				safeplaces.push_back(data.m);
+				data.m->breadbug = true;
+			}
+			break;
+		}
+		default: {
+			break;
+		}
+		}
+
+
+
+
+	}
+}
+bool mob_action_loaders::psystem_action(mob_action_call &call) {
+	if (call.args[0] == "get_safe_pikmin") {
+		call.args[0] = i2s(MOB_ACTION_GET_SAFE_PIKMIN);
+	}
+	else if (call.args[0] == "set_safe_zone") {
+		call.args[0] = i2s(MOB_ACTION_SET_SAFE_ZONES);
+	}else {
+		report_enum_error(call, 0);
+		return false;
+	}
+	return true;
+}
 
 /* ----------------------------------------------------------------------------
  * Code for the linked mob message sending mob script action.
  */
 void mob_action_runners::send_message_to_links(mob_action_run_data &data) {
+	string msg = (string)data.args[0];
+vector<string> spring = split(msg, ":");
+string rmsg = spring.back();
+string msgi = *spring.begin();
+bool continuesig;
     for(size_t l = 0; l < data.m->links.size(); ++l) {
-        if(data.m->links[l] != data.m){
-        data.m->send_message(data.m->links[l], data.args[0]);
-     }
+         data.m->links[l];
+         continuesig= false;
+         for(size_t y = 0; y < data.m->links[l]->blocked.size(); ++y){
+            if( data.m->links[l]->blocked[y] == msgi) continuesig = true;
+         }
+        
+        if(data.m->links[l] == data.m || continuesig == true) continue;
+        data.m->send_message(data.m->links[l], rmsg );
     }
 }
 
-void mob_action_runners::send_message_to_bonds(mob_action_run_data &data) {
-	for (size_t l = 0; l < data.m->links.size(); ++l) {
-		if (data.m->bond->mobs[l] != data.m) {
-			data.m->send_message_bond(data.m->bond->mobs[l], data.args[0]);
-		}
-	}
-}
 
 /* ----------------------------------------------------------------------------
  * Code for the nearby mob message sending mob script action.
@@ -969,34 +1218,31 @@ void mob_action_runners::spawn(mob_action_run_data &data) {
  * Code for the z stabilization mob script action.
  */
 void mob_action_runners::stabilize_z(mob_action_run_data &data) {
-	size_t t = 0;
-	float best_match_z;
-	if (data.m->bond->mobs[0] != data.m) {
-		best_match_z = data.m->bond->mobs[0]->z;
-	} else {
-		best_match_z = data.m->bond->mobs[1]->z;
-	}
+    if(data.m->links.empty()) {
+        return;
+    }
     
-		//best_match_z = data.m->links[0]->z;
-		t = s2i(data.args[0]);
-    for(size_t l = 1; l < data.m->bond->mobs.size(); ++l) {
-		if(data.m->bond->mobs[l] != data.m){
+    float best_match_z = data.m->links[0]->z;
+    size_t t = s2i(data.args[0]);
+    
+    for(size_t l = 1; l < data.m->links.size(); ++l) {
+    
         switch(t) {
         case MOB_ACTION_STABILIZE_Z_HIGHEST: {
-            if(data.m->bond->mobs[l]->z > best_match_z) {
+            if(data.m->links[l]->z > best_match_z) {
                 best_match_z = data.m->links[l]->z;
             }
             break;
             
         } case MOB_ACTION_STABILIZE_Z_LOWEST: {
-            if(data.m->bond->mobs[l]->z < best_match_z) {
-                best_match_z = data.m->bond->mobs[l]->z;
+            if(data.m->links[l]->z < best_match_z) {
+                best_match_z = data.m->links[l]->z;
             }
             break;
             
         }
         }
-        }
+        
     }
     
     data.m->z = best_match_z + s2f(data.args[1]);
@@ -1239,6 +1485,9 @@ bool mob_action_loaders::focus(mob_action_call &call) {
  * Loading code for the info getting script action.
  */
 bool mob_action_loaders::get_info(mob_action_call &call) {
+	if (call.args[1] == "flag") {
+		call.args[1] = i2s(MOB_ACTION_GET_INFO_FLAG);
+	}
     if(call.args[1] == "body_part") {
         call.args[1] = i2s(MOB_ACTION_GET_INFO_BODY_PART);
     } else if(call.args[1] == "chomped_pikmin") {
@@ -1259,12 +1508,7 @@ bool mob_action_loaders::get_info(mob_action_call &call) {
         call.args[1] = i2s(MOB_ACTION_GET_INFO_MESSAGE);
     } else if(call.args[1] == "message_sender") {
         call.args[1] = i2s(MOB_ACTION_GET_INFO_MESSAGE_SENDER);
-    } else if (call.args[1] == "bond_message") {
-		call.args[1] = i2s(MOB_ACTION_GET_INFO_MESSAGEBOND);
-	} else if (call.args[1] == "bond_message_sender") {
-		call.args[1] = i2s(MOB_ACTION_GET_INFO_MESSAGE_SENDERBOND);
-	}
-	else if(call.args[1] == "mob_category") {
+    } else if(call.args[1] == "mob_category") {
         call.args[1] = i2s(MOB_ACTION_GET_INFO_MOB_CATEGORY);
     } else if(call.args[1] == "mob_type") {
         call.args[1] = i2s(MOB_ACTION_GET_INFO_MOB_TYPE);
@@ -1312,7 +1556,9 @@ bool mob_action_loaders::move_to_target(mob_action_call &call) {
         call.args[0] = i2s(MOB_ACTION_MOVE_ARACHNORB_FOOT_LOGIC);
     } else if(call.args[0] == "away_from_focused_mob") {
         call.args[0] = i2s(MOB_ACTION_MOVE_AWAY_FROM_FOCUSED_MOB);
-    } else if(call.args[0] == "focused_mob") {
+    }else if (call.args[0] == "focus_to_link") {
+		call.args[0] = i2s(MOB_ACTION_MOVE_FOCUS_TO_LINK);
+	}else if(call.args[0] == "focused_mob") {
         call.args[0] = i2s(MOB_ACTION_MOVE_FOCUSED_MOB);
     } else if(call.args[0] == "focused_mob_position") {
         call.args[0] = i2s(MOB_ACTION_MOVE_FOCUSED_MOB_POS);
@@ -1320,9 +1566,7 @@ bool mob_action_loaders::move_to_target(mob_action_call &call) {
         call.args[0] = i2s(MOB_ACTION_MOVE_HOME);
     } else if(call.args[0] == "linked_mob_average") {
         call.args[0] = i2s(MOB_ACTION_MOVE_LINKED_MOB_AVERAGE);
-    } else if (call.args[0] == "bonded_mob_average") {
-    call.args[0] = i2s(MOB_ACTION_MOVE_BONDED_MOB_AVERAGE);
- } else {
+    } else {
         report_enum_error(call, 0);
         return false;
     }

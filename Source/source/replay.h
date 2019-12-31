@@ -114,7 +114,7 @@ public:
         const vector<treasure*> &treasure_list,
         const vector<onion*> &onion_list,
         const vector<mob*> &obstacle_list,
-        const size_t cur_leader_nr
+        const vector<size_t> cur_leader_nrs[4]
     );
     void clear();
     void finish_recording();

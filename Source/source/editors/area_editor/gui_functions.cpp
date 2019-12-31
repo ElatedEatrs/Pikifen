@@ -455,7 +455,15 @@ void area_editor::gui_to_info() {
         &cur_area_data.spray_amounts,
         get_textbox_text(frm_info, "txt_sprays")
     );
-    
+	h.register_int(
+		&max_score,
+		s2i(get_textbox_text(frm_info, "txt_winning_score"))
+	);
+
+	h.register_bool(
+		&VERSUS_ON,
+		s2b(get_textbox_text(frm_info, "txt_versus"))
+	);
     if(!h.all_equal()) {
         register_change("area info change");
     }
@@ -659,7 +667,8 @@ void area_editor::info_to_gui() {
     set_textbox_text(frm_info, "txt_version", cur_area_data.version);
     set_textbox_text(frm_info, "txt_notes", cur_area_data.notes);
     set_textbox_text(frm_info, "txt_sprays", cur_area_data.spray_amounts);
-    
+	set_textbox_text(frm_info, "txt_versus", b2s(VERSUS_ON));
+	set_textbox_text(frm_info, "winning_score", i2s(max_score));
 }
 
 
@@ -686,21 +695,13 @@ void area_editor::mob_to_gui() {
         set_button_text(
             frm_mob, "but_type", m_ptr->type ? m_ptr->type->name : ""
         );
-		if (m_ptr->lid != 0) {
-			set_label_text(
-				frm_mob, "lbl_links",
-				i2s(m_ptr->lid) + " " +
-				("group link id")
-			);
-		}
-		else {
-			set_label_text(
-				frm_mob, "lbl_links",
-				i2s(m_ptr->lid) + " " +
-				("this mob isn't in a group")
-			);
-		}
-        if(m_ptr->lid == 0) {
+        
+        set_label_text(
+            frm_mob, "lbl_links",
+            i2s(m_ptr->links.size()) + " " +
+            (m_ptr->links.size() == 1 ? "link" : "links")
+        );
+        if(m_ptr->links.empty()) {
             disable_widget(frm_mob->widgets["but_del_link"]);
         } else {
             enable_widget(frm_mob->widgets["but_del_link"]);
@@ -734,7 +735,15 @@ void area_editor::open_picker(const unsigned char id) {
         title = "Create/load an area.";
         can_create_new = true;
         
-    } else if(
+    } else if(id == PICKER_LOAD_DAY){
+        vector<string> folders = folder_to_vector(AREAS_FOLDER_PATH + "/" + cur_area_data.name +"/" , true);
+        for(size_t f = 0; f < folders.size(); ++f) {
+            elements.push_back(make_pair("", folders[f]));
+        }
+        title = "Create/load a new day.";
+        can_create_new = true;
+    }
+	else if(
         id == PICKER_SET_SECTOR_TYPE
     ) {
     
@@ -851,6 +860,10 @@ void area_editor::pick(
         area_editor::load_area(false);
         update_main_frame();
         
+    }else if(picker_id == PICKER_LOAD_DAY) {
+		cur_day = name;
+		register_change("Day loaded");
+        area_editor::load_day(name, false);
     } else if(picker_id == PICKER_ADD_SECTOR_HAZARD) {
         register_change("hazard addition");
         sector* s_ptr = *selected_sectors.begin();

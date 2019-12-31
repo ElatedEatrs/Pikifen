@@ -71,7 +71,7 @@ void game_state::handle_widget_events(ALLEGRO_EVENT ev) {
     vector<action_from_event> actions = get_actions_from_event(ev);
     for(size_t a = 0; a < actions.size(); ++a) {
         handle_menu_button(
-            actions[a].button, actions[a].pos, actions[a].player
+            actions[a].button, actions[a].pos, actions[a].playee
         );
     }
     

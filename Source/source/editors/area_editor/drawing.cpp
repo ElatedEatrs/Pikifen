@@ -23,7 +23,7 @@
 void area_editor::do_drawing() {
     gui->draw();
     
-    al_use_transform(&world_to_screen_transform);
+    al_use_transform(&world_to_screen_transform[pnum]);
     al_set_clipping_rectangle(
         canvas_tl.x, canvas_tl.y,
         canvas_br.x - canvas_tl.x, canvas_br.y - canvas_tl.y
@@ -196,11 +196,11 @@ void area_editor::do_drawing() {
     point cam_top_left_corner(0, 0);
     point cam_bottom_right_corner(canvas_br.x, canvas_br.y);
     al_transform_coordinates(
-        &screen_to_world_transform,
+        &screen_to_world_transform[pnum],
         &cam_top_left_corner.x, &cam_top_left_corner.y
     );
     al_transform_coordinates(
-        &screen_to_world_transform,
+        &screen_to_world_transform[pnum],
         &cam_bottom_right_corner.x, &cam_bottom_right_corner.y
     );
     
@@ -696,7 +696,7 @@ void area_editor::do_drawing() {
             dist closest_dist;
             for(size_t s = 0; s < cur_area_data.path_stops.size(); ++s) {
                 path_stop* s_ptr = cur_area_data.path_stops[s];
-                dist d(mouse_cursor_w, s_ptr->pos);
+                dist d(mouse_cursor_w[pnum], s_ptr->pos);
                 
                 if(!closest || d < closest_dist) {
                     closest = s_ptr;
@@ -706,7 +706,7 @@ void area_editor::do_drawing() {
             
             if(closest) {
                 al_draw_line(
-                    mouse_cursor_w.x, mouse_cursor_w.y,
+                    mouse_cursor_w[pnum].x, mouse_cursor_w[pnum].y,
                     closest->pos.x, closest->pos.y,
                     al_map_rgb(192, 128, 32), 2.0 / cam_zoom
                 );
@@ -917,7 +917,7 @@ void area_editor::do_drawing() {
                     al_map_rgb(255, 0, 0),
                     al_map_rgb(64, 255, 64)
                 );
-            point hotspot = snap_point(mouse_cursor_w);
+            point hotspot = snap_point(mouse_cursor_w[pnum]);
             
             al_draw_line(
                 drawing_nodes.back().snapped_spot.x,
@@ -980,7 +980,7 @@ void area_editor::do_drawing() {
     //Path drawing.
     if(sub_state == EDITOR_SUB_STATE_PATH_DRAWING) {
         if(path_drawing_stop_1) {
-            point hotspot = snap_point(mouse_cursor_w);
+            point hotspot = snap_point(mouse_cursor_w[pnum]);
             al_draw_line(
                 path_drawing_stop_1->pos.x,
                 path_drawing_stop_1->pos.y,
@@ -1015,11 +1015,12 @@ void area_editor::do_drawing() {
         sub_state == EDITOR_SUB_STATE_CIRCLE_SECTOR ||
         sub_state == EDITOR_SUB_STATE_NEW_MOB ||
         sub_state == EDITOR_SUB_STATE_DUPLICATE_MOB ||
+        sub_state == EDITOR_SUB_STATE_ADD_MOB_LINK ||
         sub_state == EDITOR_SUB_STATE_PATH_DRAWING ||
         sub_state == EDITOR_SUB_STATE_NEW_SHADOW
     ) {
-        point marker = mouse_cursor_w;
-		
+        point marker = mouse_cursor_w[pnum];
+        
         if(sub_state != EDITOR_SUB_STATE_ADD_MOB_LINK) {
             marker = snap_point(marker);
         }
@@ -1033,44 +1034,21 @@ void area_editor::do_drawing() {
             al_map_rgb(255, 255, 255), 1.0 / cam_zoom
         );
     }
-	if (sub_state == EDITOR_SUB_STATE_ADD_MOB_LINK) {
-		if (selecting) {
-			al_draw_rectangle(
-				selection_start.x,
-				selection_start.y,
-				selection_end.x,
-				selection_end.y,
-				al_map_rgb(
-					SELECTION_COLOR[0],
-					SELECTION_COLOR[1],
-					SELECTION_COLOR[2]
-				),
-				2.0 / cam_zoom
-
-			);
-		}
-
-	}
+    
     //Delete thing marker.
     if(
         sub_state == EDITOR_SUB_STATE_DEL_MOB_LINK
     ) {
-		
-		if (selecting) {
-			al_draw_rectangle(
-				selection_start.x,
-				selection_start.y,
-				selection_end.x,
-				selection_end.y,
-				al_map_rgb(
-					SELECTION_COLOR[0],
-					SELECTION_COLOR[1],
-					SELECTION_COLOR[2]
-				),
-				2.0 / cam_zoom
-
-			);
-		}
+        point marker = mouse_cursor_w[pnum];
+        
+        al_draw_line(
+            marker.x - 16, marker.y - 16, marker.x + 16, marker.y + 16,
+            al_map_rgb(255, 255, 255), 1.0 / cam_zoom
+        );
+        al_draw_line(
+            marker.x - 16, marker.y + 16, marker.x + 16, marker.y - 16,
+            al_map_rgb(255, 255, 255), 1.0 / cam_zoom
+        );
     }
     
     al_use_transform(&identity_transform);
@@ -1286,7 +1264,7 @@ void area_editor::do_drawing() {
         float cursor_segment_ratio = 0;
         get_closest_point_in_line(
             cross_section_checkpoints[0], cross_section_checkpoints[1],
-            point(mouse_cursor_w.x, mouse_cursor_w.y),
+            point(mouse_cursor_w[pnum].x, mouse_cursor_w[pnum].y),
             &cursor_segment_ratio
         );
         if(cursor_segment_ratio >= 0 && cursor_segment_ratio <= 1) {

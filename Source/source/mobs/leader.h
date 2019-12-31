@@ -90,18 +90,23 @@ private:
     
 public:
     leader_type* lea_type;
-    
+	bool whistling;
+	timer whistle_fade_timer;
+	float whistle_fade_radius;
     bool auto_plucking;
     pikmin* pluck_target;
     bool queued_pluck_cancel;
-    
+	size_t playernum;
     bool is_in_walking_anim;
-    
+
     leader(const point &pos, leader_type* type, const float angle);
     
     virtual void draw_mob(bitmap_effect_manager* effect_manager = NULL);
-    
-    void signal_group_move_start();
+
+	void update_closest_group_member();
+	bool grab_closest_group_member();
+	void change_to_next_leader(const bool forward, const bool force_success);
+	void signal_group_move_start();
     void signal_group_move_end();
     void dismiss();
     void start_whistling();
@@ -114,8 +119,7 @@ public:
 };
 
 
-void change_to_next_leader(const bool forward, const bool force_success);
-bool grab_closest_group_member();
-void update_closest_group_member();
+
+
 
 #endif //ifndef LEADER_INCLUDED

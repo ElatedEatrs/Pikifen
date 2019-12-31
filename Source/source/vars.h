@@ -56,6 +56,7 @@
 using namespace std;
 
 //Bitmaps.
+extern ALLEGRO_BITMAP* bmp_display;
 extern ALLEGRO_BITMAP* bmp_checkbox_check;
 extern ALLEGRO_BITMAP* bmp_cursor;
 extern ALLEGRO_BITMAP* bmp_cursor_invalid;
@@ -78,7 +79,11 @@ extern ALLEGRO_BITMAP* bmp_sparkle;
 extern ALLEGRO_BITMAP* bmp_spotlight;
 extern ALLEGRO_BITMAP* bmp_wave_ring;
 
+extern string cutscene_id;
 //Sound effects.
+extern sample_struct msx_alert;
+extern sample_struct msx_today;
+extern sample_struct msx_mission;
 extern sample_struct sfx_attack;
 extern sample_struct sfx_camera;
 extern sample_struct sfx_louie_whistle;
@@ -101,7 +106,8 @@ extern sample_struct sfx_pikmin_plucked;
 extern sample_struct sfx_pikmin_thrown;
 extern sample_struct sfx_switch_pikmin;
 extern sample_struct sfx_throw;
-
+extern map<string, bool> progressflags;
+extern vector<string> flagnames;
 struct asset_file_names_struct {
     string area_name_font;
     string checkbox_check;
@@ -157,10 +163,10 @@ extern vector<bridge*> bridges;
 extern map<string, bridge_type*> bridge_types;
 extern button_manager buttons;
 //Minimum and maximum coordinates that are on-camera.
-extern point cam_box[2];
-extern point cam_final_pos;
+extern point cam_box[MAX_PLAYERS][2];
+extern point cam_final_pos[MAX_PLAYERS];
 extern float cam_final_zoom;
-extern point cam_pos;
+extern point cam_pos[MAX_PLAYERS];
 extern float cam_zoom;
 extern bool can_throw_leaders;
 extern ALLEGRO_COLOR carrying_color_move;
@@ -169,12 +175,14 @@ extern float carrying_speed_base_mult;
 extern float carrying_speed_max_mult;
 extern float carrying_speed_weight_mult;
 extern size_t click_control_id;
-extern onion* close_to_onion_to_open;
-extern pikmin* close_to_pikmin_to_pluck;
-extern ship* close_to_ship_to_heal;
-extern interactable* close_to_interactable_to_use;
-extern mob* closest_group_member;
-extern bool closest_group_member_distant;
+extern onion* close_to_onion_to_open[MAX_PLAYERS];
+extern pikmin* close_to_pikmin_to_pluck[MAX_PLAYERS];
+extern ship* close_to_ship_to_heal[MAX_PLAYERS];
+extern interactable* close_to_interactable_to_use[MAX_PLAYERS];
+extern mob* closest_group_member[MAX_PLAYERS];
+extern bool closest_group_member_distant[MAX_PLAYERS];
+
+extern int max_score;
 extern vector<vector<control_info> > controls;
 extern vector<converter*> converters;
 extern map<string, converter_type*> converter_types;
@@ -194,8 +202,8 @@ extern float creator_tool_mob_hurting_ratio;
 extern unsigned char creator_tool_keys[20];
 extern bool creator_tools_enabled;
 extern area_data cur_area_data;
-extern size_t cur_leader_nr;
-extern leader* cur_leader_ptr;
+extern size_t cur_leader_nrs[MAX_PLAYERS];
+extern leader* cur_leader_ptrs[MAX_PLAYERS];
 extern string cur_message;
 extern size_t cur_message_char;
 extern timer cur_message_char_timer;
@@ -205,7 +213,7 @@ extern ALLEGRO_BITMAP* cur_message_speaker;
 extern vector<size_t> cur_message_stopping_chars;
 extern size_t cur_game_state_nr;
 extern float cur_sun_strength;
-extern float cursor_angle;
+extern float cursor_angle[MAX_PLAYERS];
 extern float cursor_height_diff_light;
 //Effect for the invalid cursor fading in or out.
 //The opacity is calculated using this number's sign.
@@ -213,7 +221,7 @@ extern float cursor_invalid_effect;
 //Maximum distance away from the leader the cursor can go.
 extern float cursor_max_dist;
 //Movement of the cursor via non-mouse.
-extern movement_struct cursor_movement;
+extern movement_struct cursor_movement[MAX_PLAYERS];
 //Is the cursor in the window, and is the window active?
 extern bool cursor_ready;
 //Time left until the position of the cursor is saved on the vector.
@@ -221,8 +229,9 @@ extern timer cursor_save_timer;
 //How much the cursor spins per second.
 extern float cursor_spin_speed;
 //Spots the cursor has been through. Used for the faint trail left behind it.
-extern vector<point> cursor_spots;
+extern vector<point> cursor_spots[MAX_PLAYERS];
 extern map<string, mob_type*> custom_mob_types;
+extern map<string, mob_type*> psystem_mob_types;
 extern map<string, particle_generator> custom_particle_generators;
 extern unsigned int day;
 extern float day_minutes;
@@ -265,16 +274,16 @@ extern subgroup_type_manager subgroup_types;
 extern float group_move_angle;
 //Distance of the arrows that appear
 //when the "move group to cursor" button is held.
-extern vector<float> group_move_arrows;
+extern vector<float> group_move_arrows[MAX_PLAYERS];
 //General intensity of the group move in the specified angle.
-extern float group_move_magnitude;
+extern float group_move_magnitude[MAX_PLAYERS];
 //Time remaining until the next arrow on the "move group arrows" appears.
 extern timer group_move_next_arrow_timer;
 //Is the "move group to cursor" button being pressed?
-extern bool group_move_cursor;
+extern bool group_move_cursor[MAX_PLAYERS];
 extern float group_move_task_range;
 //Joystick coordinates for the group movement.
-extern movement_struct group_movement;
+extern movement_struct group_movement[MAX_PLAYERS];
 extern vector<group_task*> group_tasks;
 extern map<string, group_task_type*> group_task_types;
 extern map<string, hazard> hazards;
@@ -298,17 +307,18 @@ extern float joystick_min_deadzone;
 extern float joystick_max_deadzone;
 extern map<ALLEGRO_JOYSTICK*, int> joystick_numbers;
 extern map<string, liquid> liquids;
+extern size_t pnum;
 extern vector<leader*> leaders;
 //Mob the leader's cursor is on top of, if any.
-extern mob* leader_cursor_mob;
+extern mob* leader_cursor_mobs[MAX_PLAYERS];
 //Leader's cursor, in screen coordinates.
-extern point leader_cursor_s;
+extern point leader_cursor_ss[MAX_PLAYERS];
 //Sector the leader's cursor is on, if any.
-extern sector* leader_cursor_sector;
+extern sector* leader_cursor_sectors[MAX_PLAYERS];
 //Leader's cursor, in world coordinates.
-extern point leader_cursor_w;
+extern point leader_cursor_ws[MAX_PLAYERS];
 //How hard the joystick is pressed in each direction ([0, 1]);
-extern movement_struct leader_movement;
+extern movement_struct leader_movement[MAX_PLAYERS];
 extern vector<leader_type*> leader_order;
 extern vector<string> leader_order_strings;
 extern map<string, leader_type*> leader_types;
@@ -323,6 +333,7 @@ extern float maturity_power_mult;
 extern float maturity_speed_mult;
 extern size_t max_particles;
 extern size_t max_pikmin_in_field;
+extern size_t max_players;
 //These many seconds until a new character of the message is drawn.
 extern float message_char_interval;
 extern bool mipmaps_enabled;
@@ -330,10 +341,12 @@ extern ALLEGRO_MIXER* mixer;
 extern vector<mob_action> mob_actions;
 extern mob_category_manager mob_categories;
 extern vector<mob*> mobs;
+extern vector<mob*> marbles;
+extern string scorer;
 //The physical mouse's cursor, in screen coordinates.
-extern point mouse_cursor_s;
+extern point mouse_cursor_s[MAX_PLAYERS];
 //The physical mouse's cursor, in world coordinates.
-extern point mouse_cursor_w;
+extern point mouse_cursor_w[MAX_PLAYERS];
 extern bool mouse_cursor_valid;
 extern bool mouse_moves_cursor[MAX_PLAYERS];
 //How far a leader can go to auto-pluck the next Pikmin.
@@ -357,6 +370,7 @@ extern map<string, pikmin_type*> pikmin_types;
 extern vector<pile*> piles;
 extern map<string, pile_type*> pile_types;
 extern float pluck_range;
+extern int playerpts[MAX_PLAYERS];
 //If true, the whistle radius is merely drawn as a circle.
 //Used to improve performance.
 extern bool pretty_whistle;
@@ -376,7 +390,7 @@ extern vector<scale*> scales;
 extern bool scr_fullscreen;
 extern int scr_h;
 extern int scr_w;
-extern ALLEGRO_TRANSFORM screen_to_world_transform;
+extern ALLEGRO_TRANSFORM screen_to_world_transform[MAX_PLAYERS];
 extern sector_types_manager sector_types;
 extern unsigned int selected_spray;
 extern replay session_replay;
@@ -384,6 +398,7 @@ extern unsigned char ship_beam_ring_color[3];
 extern bool ship_beam_ring_color_up[3];
 extern map<string, ship_type*> ship_types;
 extern vector<ship*> ships;
+extern vector<mob*> safeplaces;
 extern bool show_system_info;
 //If false, images that are scaled up and down will look pixelated.
 extern bool smooth_scaling;
@@ -407,28 +422,29 @@ extern bool transition_fade_in;
 extern map<string, treasure_type*> treasure_types;
 extern vector<treasure*> treasures;
 //Voice from which the sound effects play.
+extern bool VERSUS_ON;
 extern ALLEGRO_VOICE* voice;
 extern map<string, weather> weather_conditions;
-extern size_t whistle_control_id;
+extern size_t whistle_control_id[MAX_PLAYERS];
 //Radius of every 6th dot.
-extern float whistle_dot_radius[6];
+extern float whistle_dot_radius[MAX_PLAYERS][6];
 //Radius the whistle was at pre-fade.
-extern float whistle_fade_radius;
+extern float whistle_fade_radiuse;
 //Time left for the whistle's fading animations.
-extern timer whistle_fade_timer;
+extern timer whistle_fade_timere;
 extern float whistle_growth_speed;
-extern timer whistle_next_dot_timer;
-extern timer whistle_next_ring_timer;
-extern float whistle_radius;
-extern vector<unsigned char> whistle_ring_colors;
-extern unsigned char whistle_ring_prev_color;
-extern vector<float> whistle_rings;
+extern timer whistle_next_dot_timer[MAX_PLAYERS];
+extern timer whistle_next_ring_timer[MAX_PLAYERS];
+extern float whistle_radius[MAX_PLAYERS];
+extern vector<unsigned char> whistle_ring_colors[MAX_PLAYERS];
+extern unsigned char whistle_ring_prev_color[MAX_PLAYERS];
+extern vector<float> whistle_rings[MAX_PLAYERS];
 //Is the whistle currently being blown?
 extern bool whistling;
 //Should we force the window's positioning
 //(on some systems it appears out-of-bounds by default)
 extern bool window_position_hack;
-extern ALLEGRO_TRANSFORM world_to_screen_transform;
+extern ALLEGRO_TRANSFORM world_to_screen_transform[MAX_PLAYERS];
 extern float zoom_max_level;
 extern float zoom_mid_level;
 extern float zoom_min_level;

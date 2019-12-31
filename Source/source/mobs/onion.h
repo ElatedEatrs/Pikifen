@@ -59,7 +59,7 @@ public:
     
     void call_pikmin();
     void spew();
-    void stow_pikmin();
+    void stow_pikmin(size_t playee);
 };
 
 #endif //ifndef ONION_INCLUDED

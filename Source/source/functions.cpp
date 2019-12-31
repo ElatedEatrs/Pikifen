@@ -155,13 +155,13 @@ void crash(const string &reason, const string &info, const int exit_status) {
         i2s(bitmaps.get_total_calls()) + " total calls).\n" +
         "  Current leader: " ;
         
-    if(cur_leader_ptr) {
+    if(cur_leader_ptrs[pnum]) {
         error_str +=
-            cur_leader_ptr->type->name + ", at " +
-            p2s(cur_leader_ptr->pos) + ", state history: " +
-            cur_leader_ptr->fsm.cur_state->name;
+            cur_leader_ptrs[pnum]->type->name + ", at " +
+            p2s(cur_leader_ptrs[pnum]->pos) + ", state history: " +
+            cur_leader_ptrs[pnum]->fsm.cur_state->name;
         for(size_t h = 0; h < STATE_HISTORY_SIZE; ++h) {
-            error_str += " " + cur_leader_ptr->fsm.prev_state_names[h];
+            error_str += " " + cur_leader_ptrs[pnum]->fsm.prev_state_names[h];
         }
         error_str += "\n  10 closest Pikmin to that leader:\n";
         
@@ -170,8 +170,8 @@ void crash(const string &reason, const string &info, const int exit_status) {
             closest_pikmin.begin(), closest_pikmin.end(),
         [] (pikmin * p1, pikmin * p2) -> bool {
             return
-            dist(cur_leader_ptr->pos, p1->pos).to_float() <
-            dist(cur_leader_ptr->pos, p2->pos).to_float();
+            dist(cur_leader_ptrs[pnum]->pos, p1->pos).to_float() <
+            dist(cur_leader_ptrs[pnum]->pos, p2->pos).to_float();
         }
         );
         
@@ -310,7 +310,7 @@ mob* get_closest_mob_to_cursor() {
         
         if(!m_ptr->fsm.cur_state) continue;
         
-        dist d = dist(mouse_cursor_w, m_ptr->pos);
+        dist d = dist(mouse_cursor_w[pnum], m_ptr->pos);
         if(!closest_mob_to_cursor || d < closest_mob_to_cursor_dist) {
             closest_mob_to_cursor = m_ptr;
             closest_mob_to_cursor_dist = d;
@@ -902,11 +902,11 @@ void save_creator_tools() {
  */
 void save_options() {
     data_node file("", "");
-    
+	file.add(new data_node("playernumber", i2s(max_players)));
     //First, group the controls by action and player.
     map<string, string> grouped_controls;
     
-    for(unsigned char p = 0; p < MAX_PLAYERS; ++p) {
+    for(unsigned char p = 0; p < max_players; ++p) {
         string prefix = "p" + i2s((p + 1)) + "_";
         for(size_t b = 0; b < N_BUTTONS; ++b) {
             string option_name = buttons.list[b].option_name;
@@ -916,7 +916,7 @@ void save_options() {
     }
     
     //Write down their control strings.
-    for(size_t p = 0; p < MAX_PLAYERS; p++) {
+    for(size_t p = 0; p < max_players; p++) {
         size_t n_controls = controls[p].size();
         for(size_t c = 0; c < n_controls; ++c) {
             string name = "p" + i2s(p + 1) + "_";
@@ -941,7 +941,7 @@ void save_options() {
         file.add(new data_node(c->first, c->second));
     }
     
-    for(unsigned char p = 0; p < MAX_PLAYERS; ++p) {
+    for(unsigned char p = 0; p < max_players; ++p) {
         file.add(
             new data_node(
                 "p" + i2s((p + 1)) + "_mouse_moves_cursor",
@@ -1129,8 +1129,9 @@ void signal_handler(const int signum) {
  */
 void spew_pikmin_seed(
     const point pos, const float z, pikmin_type* pik_type,
-    const float angle, const float horizontal_speed, const float vertical_speed
+    const float angle, const float horizontal_speed, const float vertical_speed,mob* o
 ) {
+
     pikmin* new_pikmin =
         (
             (pikmin*)
@@ -1145,6 +1146,7 @@ void spew_pikmin_seed(
     new_pikmin->speed_z = vertical_speed;
     new_pikmin->fsm.set_state(PIKMIN_STATE_SEED);
     new_pikmin->maturity = 0;
+	if (o)new_pikmin->team = o->team;
 }
 
 

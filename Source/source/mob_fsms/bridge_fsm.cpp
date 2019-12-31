@@ -60,7 +60,10 @@ void bridge_fsm::open(mob* m, void* info1, void* info2) {
     b_ptr->start_dying();
     b_ptr->finish_dying();
     b_ptr->tangible = false;
-    
+	for (size_t l = 0; l < b_ptr->links.size(); ++l) {
+		string sizzle = "activate";
+		b_ptr->send_message(b_ptr->links[l], sizzle);
+	}
     particle p(
         PARTICLE_TYPE_BITMAP, m->pos, m->z + m->height + 1,
         80, 2.75, PARTICLE_PRIORITY_MEDIUM

@@ -21,7 +21,7 @@ bridge::bridge(const point &pos, bridge_type* bri_type, const float angle) :
     bri_type(bri_type) {
     
     //Search neighboring sectors.
-    get_sector(pos, NULL, true)->get_neighbor_sectors_conditionally(
+    get_sector(pos, NULL, false)->get_neighbor_sectors_conditionally(
     [] (sector * s) -> bool {
         return
         s->type == SECTOR_TYPE_BRIDGE ||

@@ -902,7 +902,7 @@ void animation_editor::load() {
     frm_sprite->widgets["but_bitmap"]->left_mouse_click_handler =
     [this] (lafi::widget*, int, int) {
         state = EDITOR_STATE_SPRITE_BITMAP;
-        pre_sprite_bmp_cam_pos = cam_pos;
+        pre_sprite_bmp_cam_pos = cam_pos[pnum];
         pre_sprite_bmp_cam_zoom = cam_zoom;
         center_camera_on_sprite_bitmap();
         sprite_bmp_to_gui();
@@ -1052,7 +1052,7 @@ void animation_editor::load() {
         "Go back to the sprite editor.";
     frm_sprite_bmp->widgets["but_back"]->left_mouse_click_handler =
     [this] (lafi::widget*, int, int) {
-        cam_pos = pre_sprite_bmp_cam_pos;
+        cam_pos[pnum] = pre_sprite_bmp_cam_pos;
         cam_zoom = pre_sprite_bmp_cam_zoom;
         state = EDITOR_STATE_SPRITE;
         change_to_right_frame();

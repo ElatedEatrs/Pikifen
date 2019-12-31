@@ -34,10 +34,11 @@ pikmin::pikmin(const point &pos, pikmin_type* type, const float angle) :
     maturity(2),
     is_seed_or_sprout(false),
     pluck_reserved(false),
+	is_safe(false),
     latched(false),
     is_tool_primed_for_whistle(false),
     consecutive_dud_hits(0) {
-    
+
     invuln_period = timer(PIKMIN_INVULN_PERIOD);
     team = MOB_TEAM_PLAYER_1; // TODO
     subgroup_type_ptr =
@@ -173,7 +174,7 @@ void pikmin::draw_mob(bitmap_effect_manager* effect_manager) {
     bitmap_effect_manager effects;
     add_sector_brightness_bitmap_effect(&effects);
     add_status_bitmap_effects(&effects);
-    
+	
     if(is_idle) {
         bitmap_effect idle_effect;
         bitmap_effect_props idle_effect_props;
@@ -209,7 +210,52 @@ void pikmin::draw_mob(bitmap_effect_manager* effect_manager) {
             type->main_color
         );
     }
-    
+	if (VERSUS_ON == true) {
+		point top_pos;
+		top_pos = rotate_point(s_ptr->top_pos, angle);
+
+		if (team == MOB_TEAM_PLAYER_1) {
+			ALLEGRO_COLOR c = al_map_rgb(255, 0, 0);
+			draw_bitmap(
+				bmp_idle_glow,
+				pos + top_pos,
+				point(standard_pikmin_radius * 6, standard_pikmin_radius * 6),
+				area_time_passed * IDLE_GLOW_SPIN_SPEED,
+				c
+			);
+		}
+		if (team == MOB_TEAM_PLAYER_2) {
+			ALLEGRO_COLOR c = al_map_rgb(0, 255, 255);
+			draw_bitmap(
+				bmp_idle_glow,
+				pos + top_pos,
+				point(standard_pikmin_radius * 6, standard_pikmin_radius * 6),
+				area_time_passed * IDLE_GLOW_SPIN_SPEED,
+				c
+			);
+		}
+		if (team == MOB_TEAM_PLAYER_3) {
+			ALLEGRO_COLOR c = al_map_rgb(128, 255, 0);
+
+			draw_bitmap(
+				bmp_idle_glow,
+				pos + top_pos,
+				point(standard_pikmin_radius * 6, standard_pikmin_radius * 6),
+				area_time_passed * IDLE_GLOW_SPIN_SPEED,
+				c
+			);
+		}
+		if (team == MOB_TEAM_PLAYER_4) {
+			ALLEGRO_COLOR c = al_map_rgb(128, 0, 255);
+			draw_bitmap(
+				bmp_idle_glow,
+				pos + top_pos,
+				point(standard_pikmin_radius * 6, standard_pikmin_radius * 6),
+				area_time_passed * IDLE_GLOW_SPIN_SPEED,
+				c
+			);
+		}
+	}
     float status_bmp_scale;
     ALLEGRO_BITMAP* status_bmp = get_status_bitmap(&status_bmp_scale);
     if(status_bmp) {

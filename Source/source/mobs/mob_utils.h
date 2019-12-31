@@ -60,9 +60,8 @@ struct carry_info_struct {
     mob* m;
     //Generic type of delivery destination. Use CARRY_DESTINATION_*.
     size_t destination;
-    
     vector<carrier_spot_struct> spot_info;
-    
+	size_t cur_team;
     //This is to avoid going through the vector
     //only to find out the total strength.
     float cur_carrying_strength;
@@ -122,9 +121,6 @@ struct circling_info_struct {
     circling_info_struct(mob* m);
 };
 
-struct mobgroup {
-	vector<mob*> mobs;
-};
 
 /* ----------------------------------------------------------------------------
  * Information on a mob's group.
@@ -250,11 +246,11 @@ struct track_info_struct {
     track_info_struct(mob* m);
 };
 
-//creates mob without link id or link identification
+
 mob* create_mob(
-	mob_category* category, const point &pos, mob_type* type,
-	const float angle, const string &vars,
-	function<void(mob*)> code_after_creation = nullptr
+    mob_category* category, const point &pos, mob_type* type,
+    const float angle, const string &vars,
+    function<void(mob*)> code_after_creation = nullptr
 );
 void delete_mob(mob* m, const bool complete_destruction = false);
 string get_error_message_mob_info(mob* m);

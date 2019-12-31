@@ -138,21 +138,27 @@ mob_event* mob_fsm::get_event(const size_t type) {
 void mob_fsm::run_event(
     const size_t type, void* custom_data_1, void* custom_data_2
 ) {
-    mob_event* e = get_event(type);
-    if(e) {
-        e->run(m, custom_data_1, custom_data_2);
-    } else {
-    
+	if (m != nullptr) {
+		mob_event* e = get_event(type);
+		if (e) {
+			e->run(m, custom_data_1, custom_data_2);
+		}
+		else {
+
 #ifdef DEBUG_FSM
-        cout <<
-             "Missing event on run_event() - Mob " <<
-             m << ", event " << type << ", state " <<
-             (this->cur_state ? this->cur_state->name : "[None]") <<
-             endl;
+			cout <<
+				"Missing event on run_event() - Mob " <<
+				m << ", event " << type << ", state " <<
+				(this->cur_state ? this->cur_state->name : "[None]") <<
+				endl;
 #endif
-             
-        return;
-    }
+
+			return;
+		}
+	}
+	if (m == nullptr) {
+		delete m;
+   }
 }
 
 
@@ -170,6 +176,9 @@ mob_event::mob_event(data_node* node, const vector<mob_action_call*> &actions) :
     string n = node->name;
     if(n == "on_enter") type = MOB_EVENT_ON_ENTER;
     r("on_leave",              MOB_EVENT_ON_LEAVE);
+	r("on_near_home",			   MOB_EVENT_ON_NEAR_HOME);
+	r("on_cutscene_enter",   MOB_EVENT_CUTSCENE_START);
+	r("on_cutscene_end", MOB_EVENT_CUTSCENE_END);
     r("on_tick",               MOB_EVENT_ON_TICK);
     r("on_animation_end",      MOB_EVENT_ANIMATION_END);
     r("on_damage",             MOB_EVENT_DAMAGE);
@@ -183,8 +192,7 @@ mob_event::mob_event(data_node* node, const vector<mob_action_call*> &actions) :
     r("on_object_in_reach",    MOB_EVENT_OBJECT_IN_REACH);
     r("on_opponent_in_reach",  MOB_EVENT_OPPONENT_IN_REACH);
     r("on_pikmin_land",        MOB_EVENT_PIKMIN_LANDED);
-    r("on_receive_message",      MOB_EVENT_RECEIVE_MESSAGE);
-	r("on_receive_message_bond", MOB_EVENT_RECEIVE_MESSAGEBOND);
+    r("on_receive_message",    MOB_EVENT_RECEIVE_MESSAGE);
     r("on_released",           MOB_EVENT_RELEASED);
     r("on_reach_destination",  MOB_EVENT_REACHED_DESTINATION);
     r("on_timer",              MOB_EVENT_TIMER);

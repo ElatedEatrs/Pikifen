@@ -392,10 +392,10 @@ void particle_generator::emit(particle_manager &manager) {
     base_p_z += follow_z_offset;
     
     if(
-        base_p_pos.x < cam_box[0].x ||
-        base_p_pos.x > cam_box[1].x ||
-        base_p_pos.y < cam_box[0].y ||
-        base_p_pos.y > cam_box[1].y
+        base_p_pos.x < cam_box[pnum][0].x ||
+        base_p_pos.x > cam_box[pnum][1].x ||
+        base_p_pos.y < cam_box[pnum][0].y ||
+        base_p_pos.y > cam_box[pnum][1].y
     ) {
         //Too far off-camera.
         return;

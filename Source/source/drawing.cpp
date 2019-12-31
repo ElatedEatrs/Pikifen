@@ -20,6 +20,7 @@
 #include "utils/geometry_utils.h"
 #include "utils/string_utils.h"
 #include "vars.h"
+#include "endofday.h"
 
 /* ----------------------------------------------------------------------------
  * Does the drawing for the main game loop.
@@ -34,7 +35,7 @@ void gameplay::do_game_drawing(
     ***** |__|          DRAWING          |__| *****
       ***  \/                             \/  ***
         ***************************************/
-    
+
     if(!paused) {
     
         cur_sun_strength = get_sun_strength();
@@ -42,7 +43,8 @@ void gameplay::do_game_drawing(
         ALLEGRO_TRANSFORM world_to_screen_drawing_transform;
         
         if(bmp_output) {
-            world_to_screen_drawing_transform = *bmp_transform;
+			if(!bmp_transform) world_to_screen_drawing_transform = world_to_screen_transform[pnum];
+            else world_to_screen_drawing_transform = *bmp_transform;
             al_set_target_bitmap(bmp_output);
             al_set_separate_blender(
                 ALLEGRO_ADD, ALLEGRO_ALPHA,
@@ -50,7 +52,7 @@ void gameplay::do_game_drawing(
                 ALLEGRO_ONE, ALLEGRO_INVERSE_ALPHA
             );
         } else {
-            world_to_screen_drawing_transform = world_to_screen_transform;
+            world_to_screen_drawing_transform = world_to_screen_transform[pnum];
         }
         
         al_clear_to_color(cur_area_data.bg_color);
@@ -63,32 +65,27 @@ void gameplay::do_game_drawing(
         draw_world_components(bmp_output);
         
         //Layer 3 -- In-game text.
-        if(!bmp_output) {
+   
             draw_ingame_text();
-        }
         
         //Layer 4 -- Precipitation.
-        if(!bmp_output) {
             draw_precipitation();
-        }
         
         //Layer 5 -- Tree shadows.
-        if(!(bmp_output && !creator_tool_area_image_shadows)) {
+        if(!(!creator_tool_area_image_shadows)) {
             draw_tree_shadows();
         }
         
         //Finish dumping to a bitmap image here.
-        if(bmp_output) {
-            al_set_target_backbuffer(display);
-            return;
-        }
+
         
         //Layer 6 -- Lighting filter.
         draw_lighting_filter();
         
         //Layer 7 -- Cursor.
-        draw_cursor(world_to_screen_drawing_transform);
-        
+
+			draw_cursor(world_to_screen_drawing_transform);
+
         //Layer 8 -- HUD
         if(cur_message.empty()) {
             draw_hud();
@@ -110,10 +107,13 @@ void gameplay::do_game_drawing(
             area_title_fade_timer.get_ratio_left()
         );
     }
-    
+	if (bmp_output) {
+		al_set_target_backbuffer(display);
+	}
     fade_mgr.draw();
     
     al_flip_display();
+
 }
 
 
@@ -142,20 +142,20 @@ void gameplay::draw_background(ALLEGRO_BITMAP* bmp_output) {
     
     bg_v[0].x = 0;
     bg_v[0].y = 0;
-    bg_v[0].u = (cam_pos.x - final_zoom.x) / cur_area_data.bg_bmp_zoom;
-    bg_v[0].v = (cam_pos.y - final_zoom.y) / cur_area_data.bg_bmp_zoom;
+    bg_v[0].u = (cam_pos[pnum].x - final_zoom.x) / cur_area_data.bg_bmp_zoom;
+    bg_v[0].v = (cam_pos[pnum].y - final_zoom.y) / cur_area_data.bg_bmp_zoom;
     bg_v[1].x = bmp_w;
     bg_v[1].y = 0;
-    bg_v[1].u = (cam_pos.x + final_zoom.x) / cur_area_data.bg_bmp_zoom;
-    bg_v[1].v = (cam_pos.y - final_zoom.y) / cur_area_data.bg_bmp_zoom;
+    bg_v[1].u = (cam_pos[pnum].x + final_zoom.x) / cur_area_data.bg_bmp_zoom;
+    bg_v[1].v = (cam_pos[pnum].y - final_zoom.y) / cur_area_data.bg_bmp_zoom;
     bg_v[2].x = bmp_w;
     bg_v[2].y = bmp_h;
-    bg_v[2].u = (cam_pos.x + final_zoom.x) / cur_area_data.bg_bmp_zoom;
-    bg_v[2].v = (cam_pos.y + final_zoom.y) / cur_area_data.bg_bmp_zoom;
+    bg_v[2].u = (cam_pos[pnum].x + final_zoom.x) / cur_area_data.bg_bmp_zoom;
+    bg_v[2].v = (cam_pos[pnum].y + final_zoom.y) / cur_area_data.bg_bmp_zoom;
     bg_v[3].x = 0;
     bg_v[3].y = bmp_h;
-    bg_v[3].u = (cam_pos.x - final_zoom.x) / cur_area_data.bg_bmp_zoom;
-    bg_v[3].v = (cam_pos.y + final_zoom.y) / cur_area_data.bg_bmp_zoom;
+    bg_v[3].u = (cam_pos[pnum].x - final_zoom.x) / cur_area_data.bg_bmp_zoom;
+    bg_v[3].v = (cam_pos[pnum].y + final_zoom.y) / cur_area_data.bg_bmp_zoom;
     
     al_draw_prim(
         bg_v, NULL, cur_area_data.bg_bmp,
@@ -173,35 +173,35 @@ void gameplay::draw_cursor(
 
     al_use_transform(&world_to_screen_drawing_transform);
     
-    size_t n_arrows = group_move_arrows.size();
+    size_t n_arrows = group_move_arrows[pnum].size();
     for(size_t a = 0; a < n_arrows; ++a) {
         point pos(
-            cos(group_move_angle) * group_move_arrows[a],
-            sin(group_move_angle) * group_move_arrows[a]
+            cos(group_move_angle) * group_move_arrows[pnum][a],
+            sin(group_move_angle) * group_move_arrows[pnum][a]
         );
         float alpha =
             64 + min(
                 191,
                 (int) (
-                    191 * (group_move_arrows[a] / (cursor_max_dist * 0.4))
+                    191 * (group_move_arrows[pnum][a] / (cursor_max_dist * 0.4))
                 )
             );
         draw_bitmap(
             bmp_group_move_arrow,
-            cur_leader_ptr->pos + pos,
-            point(16 * (1 + group_move_arrows[a] / cursor_max_dist), -1),
+            cur_leader_ptrs[pnum]->pos + pos,
+            point(16 * (1 + group_move_arrows[pnum][a] / cursor_max_dist), -1),
             group_move_angle,
             map_alpha(alpha)
         );
     }
     
-    size_t n_rings = whistle_rings.size();
+    size_t n_rings = whistle_rings[pnum].size();
     for(size_t r = 0; r < n_rings; ++r) {
         point pos(
-            cur_leader_ptr->pos.x + cos(cursor_angle) * whistle_rings[r],
-            cur_leader_ptr->pos.y + sin(cursor_angle) * whistle_rings[r]
+            cur_leader_ptrs[pnum]->pos.x + cos(cursor_angle[pnum]) * whistle_rings[pnum][r],
+            cur_leader_ptrs[pnum]->pos.y + sin(cursor_angle[pnum]) * whistle_rings[pnum][r]
         );
-        unsigned char n = whistle_ring_colors[r];
+        unsigned char n = whistle_ring_colors[pnum][r];
         al_draw_circle(
             pos.x, pos.y, 8,
             al_map_rgba(
@@ -213,7 +213,7 @@ void gameplay::draw_cursor(
         );
     }
     
-    if(whistle_radius > 0 || whistle_fade_timer.time_left > 0.0f) {
+	if (whistle_radius[pnum] > 0 || cur_leader_ptrs[pnum]->whistle_fade_timer.time_left > 0.0f) {
         if(pretty_whistle) {
             unsigned char n_dots = 16 * 6;
             for(unsigned char d = 0; d < 6; ++d) {
@@ -225,16 +225,16 @@ void gameplay::draw_cursor(
                         WHISTLE_DOT_SPIN_SPEED * area_time_passed;
                         
                     point dot_pos(
-                        leader_cursor_w.x +
-                        cos(angle) * whistle_dot_radius[d],
-                        leader_cursor_w.y +
-                        sin(angle) * whistle_dot_radius[d]
+                        leader_cursor_ws[pnum].x +
+                        cos(angle) * whistle_dot_radius[pnum][d],
+                        leader_cursor_ws[pnum].y +
+                        sin(angle) * whistle_dot_radius[pnum][d]
                     );
                     
                     ALLEGRO_COLOR c;
                     float alpha_mult;
-                    if(whistle_fade_timer.time_left > 0.0f)
-                        alpha_mult = whistle_fade_timer.get_ratio_left();
+                    if(cur_leader_ptrs[pnum]->whistle_fade_timer.time_left > 0.0f)
+                        alpha_mult = cur_leader_ptrs[pnum]->whistle_fade_timer.get_ratio_left();
                     else
                         alpha_mult = 1;
                         
@@ -262,14 +262,14 @@ void gameplay::draw_cursor(
                 }
             }
         } else {
-            unsigned char alpha = whistle_fade_timer.get_ratio_left() * 255;
-            float radius = whistle_fade_radius;
+            unsigned char alpha = cur_leader_ptrs[pnum]->whistle_fade_timer.get_ratio_left() * 255;
+            float radius = cur_leader_ptrs[pnum]->whistle_fade_radius;
             if(whistle_radius > 0) {
                 alpha = 255;
-                radius = whistle_radius;
+                radius = whistle_radius[pnum];
             }
             al_draw_circle(
-                leader_cursor_w.x, leader_cursor_w.y, radius,
+                leader_cursor_ws[pnum].x, leader_cursor_ws[pnum].y, radius,
                 al_map_rgba(192, 192, 0, alpha), 2
             );
         }
@@ -278,9 +278,9 @@ void gameplay::draw_cursor(
     //Cursor trail
     al_use_transform(&identity_transform);
     if(draw_cursor_trail) {
-        for(size_t p = 1; p < cursor_spots.size(); ++p) {
-            point* p_ptr = &cursor_spots[p];
-            point* pp_ptr = &cursor_spots[p - 1]; //Previous point.
+        for(size_t p = 1; p < cursor_spots[pnum].size(); ++p) {
+            point* p_ptr = &cursor_spots[pnum][p];
+            point* pp_ptr = &cursor_spots[pnum][p - 1]; //Previous point.
             if(
                 (*p_ptr) != (*pp_ptr) &&
                 dist(*p_ptr, *pp_ptr) > 4
@@ -289,8 +289,8 @@ void gameplay::draw_cursor(
                     p_ptr->x, p_ptr->y,
                     pp_ptr->x, pp_ptr->y,
                     change_alpha(
-                        cur_leader_ptr->lea_type->main_color,
-                        (p / (float) cursor_spots.size()) * 64
+                        cur_leader_ptrs[pnum]->lea_type->main_color,
+                        (p / (float) cursor_spots[pnum].size()) * 64
                     ),
                     p * 3
                 );
@@ -299,32 +299,32 @@ void gameplay::draw_cursor(
     }
     
     //Mouse cursor.
-    draw_bitmap(
-        bmp_mouse_cursor,
-        mouse_cursor_s,
-        point(
-            cam_zoom * al_get_bitmap_width(bmp_mouse_cursor) * 0.5,
-            cam_zoom * al_get_bitmap_height(bmp_mouse_cursor) * 0.5
-        ),
-        -(area_time_passed * cursor_spin_speed),
-        change_color_lighting(
-            cur_leader_ptr->lea_type->main_color,
-            cursor_height_diff_light
-        )
-    );
+	draw_bitmap(
+		bmp_mouse_cursor,
+		mouse_cursor_s[pnum],
+		point(
+			cam_zoom * al_get_bitmap_width(bmp_mouse_cursor) * 0.5,
+			cam_zoom * al_get_bitmap_height(bmp_mouse_cursor) * 0.5
+		),
+		-(area_time_passed * cursor_spin_speed),
+		change_color_lighting(
+			cur_leader_ptrs[pnum]->lea_type->main_color,
+			cursor_height_diff_light
+		)
+	);
     
     //Leader cursor.
     al_use_transform(&world_to_screen_drawing_transform);
     draw_bitmap(
         bmp_cursor,
-        leader_cursor_w,
+        leader_cursor_ws[pnum],
         point(
             al_get_bitmap_width(bmp_cursor) * 0.5,
             al_get_bitmap_height(bmp_cursor) * 0.5
         ),
-        cursor_angle,
+        cursor_angle[pnum],
         change_color_lighting(
-            cur_leader_ptr->lea_type->main_color,
+            cur_leader_ptrs[pnum]->lea_type->main_color,
             cursor_height_diff_light
         )
     );
@@ -335,13 +335,13 @@ void gameplay::draw_cursor(
             
         draw_bitmap(
             bmp_cursor_invalid,
-            leader_cursor_w,
+            leader_cursor_ws[pnum],
             point(
                 al_get_bitmap_width(bmp_cursor) * 0.5,
                 al_get_bitmap_height(bmp_cursor) * 0.5
             ),
             0,
-            change_alpha(cur_leader_ptr->lea_type->main_color, alpha)
+            change_alpha(cur_leader_ptrs[pnum]->lea_type->main_color, alpha)
         );
     }
 }
@@ -353,432 +353,893 @@ void gameplay::draw_cursor(
 void gameplay::draw_hud() {
     al_use_transform(&identity_transform);
     point i_center, i_size;
-    
-    //Leader health.
-    for(size_t l = 0; l < 3; ++l) {
-        if(leaders.size() < l + 1) continue;
-        
-        size_t l_nr = sum_and_wrap(cur_leader_nr, l, leaders.size());
-        size_t icon_id = HUD_ITEM_LEADER_1_ICON + l;
-        size_t health_id = HUD_ITEM_LEADER_1_HEALTH + l;
-        
-        //Leader's icon.
-        if(hud_items.get_draw_data(icon_id, &i_center, &i_size)) {
-            al_draw_filled_circle(
-                i_center.x, i_center.y,
-                min(i_size.x, i_size.y) / 2.0f,
-                change_alpha(leaders[l_nr]->type->main_color, 128)
-            );
-            draw_bitmap_in_box(
-                leaders[l_nr]->lea_type->bmp_icon,
-                i_center, i_size
-            );
-            draw_bitmap_in_box(bmp_bubble, i_center, i_size);
-            
-        }
-        
-        //Health wheel.
-        if(hud_items.get_draw_data(health_id, &i_center, &i_size)) {
-            draw_health(
-                i_center,
-                leaders[l_nr]->health, leaders[l_nr]->type->max_health,
-                min(i_size.x, i_size.y) * 0.4f,
-                true
-            );
-            draw_bitmap_in_box(bmp_hard_bubble, i_center, i_size);
-        }
-        
-    }
-    
-    //Sun Meter.
-    if(hud_items.get_draw_data(HUD_ITEM_TIME, &i_center, &i_size)) {
-        unsigned char n_hours =
-            (day_minutes_end - day_minutes_start) / 60.0f;
-        float day_passed_ratio =
-            (float) (day_minutes - day_minutes_start) /
-            (float) (day_minutes_end - day_minutes_start);
-        float sun_radius = i_size.y / 2.0;
-        float first_dot_x = (i_center.x - i_size.x / 2.0) + sun_radius;
-        float last_dot_x = (i_center.x + i_size.x / 2.0) - sun_radius;
-        float dots_y = i_center.y;
-        //Width, from the center of the first dot to the center of the last.
-        float dots_span = last_dot_x - first_dot_x;
-        float dot_interval = dots_span / (float) n_hours;
-        float sun_meter_sun_angle = area_time_passed * SUN_METER_SUN_SPIN_SPEED;
-        
-        //Larger bubbles at the start, middle and end of the meter.
-        al_hold_bitmap_drawing(true);
-        draw_bitmap(
-            bmp_hard_bubble, point(first_dot_x + dots_span * 0.0, dots_y),
-            point(sun_radius * 0.9, sun_radius * 0.9)
-        );
-        draw_bitmap(
-            bmp_hard_bubble, point(first_dot_x + dots_span * 0.5, dots_y),
-            point(sun_radius * 0.9, sun_radius * 0.9)
-        );
-        draw_bitmap(
-            bmp_hard_bubble, point(first_dot_x + dots_span * 1.0, dots_y),
-            point(sun_radius * 0.9, sun_radius * 0.9)
-        );
-        
-        for(unsigned char h = 0; h < n_hours + 1; ++h) {
-            draw_bitmap(
-                bmp_hard_bubble,
-                point(first_dot_x + h * dot_interval, dots_y),
-                point(sun_radius * 0.6, sun_radius * 0.6)
-            );
-        }
-        al_hold_bitmap_drawing(false);
-        
-        //Static sun.
-        draw_bitmap(
-            bmp_sun,
-            point(first_dot_x + day_passed_ratio * dots_span, dots_y),
-            point(sun_radius * 1.5, sun_radius * 1.5)
-        );
-        //Spinning sun.
-        draw_bitmap(
-            bmp_sun,
-            point(first_dot_x + day_passed_ratio * dots_span, dots_y),
-            point(sun_radius * 1.5, sun_radius * 1.5),
-            sun_meter_sun_angle
-        );
-        //Bubble in front the sun.
-        draw_bitmap(
-            bmp_hard_bubble,
-            point(first_dot_x + day_passed_ratio * dots_span, dots_y),
-            point(sun_radius * 1.5, sun_radius * 1.5),
-            0, al_map_rgb(255, 192, 128)
-        );
-    }
-    
-    //Day number bubble.
-    if(hud_items.get_draw_data(HUD_ITEM_DAY_BUBBLE, &i_center, &i_size)) {
-        draw_bitmap_in_box(bmp_day_bubble, i_center, i_size);
-    }
-    
-    //Day number text.
-    if(hud_items.get_draw_data(HUD_ITEM_DAY_NUMBER, &i_center, &i_size)) {
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            i_center, ALLEGRO_ALIGN_CENTER, 1,
-            i_size, i2s(day)
-        );
-    }
-    
-    //Standby group member.
-    ALLEGRO_BITMAP* standby_bmp = NULL;
-    ALLEGRO_BITMAP* standby_mat_bmp = NULL;
-    if(closest_group_member && cur_leader_ptr->group->cur_standby_type) {
-        SUBGROUP_TYPE_CATEGORIES c =
-            cur_leader_ptr->group->cur_standby_type->get_category();
-            
-        if(c == SUBGROUP_TYPE_CATEGORY_LEADER) {
-            leader* l_ptr = dynamic_cast<leader*>(closest_group_member);
-            standby_bmp = l_ptr->lea_type->bmp_icon;
-            
-        } else if(c == SUBGROUP_TYPE_CATEGORY_PIKMIN) {
-            pikmin* p_ptr = dynamic_cast<pikmin*>(closest_group_member);
-            standby_bmp = cur_leader_ptr->group->cur_standby_type->get_icon();
-            standby_mat_bmp =
-                p_ptr->pik_type->bmp_maturity_icon[p_ptr->maturity];
-                
-        } else {
-            standby_bmp = cur_leader_ptr->group->cur_standby_type->get_icon();
-            
-        }
-    }
-    if(!standby_bmp) standby_bmp = bmp_no_pikmin_bubble;
-    
-    //Standby group member icon.
-    if(
-        hud_items.get_draw_data(
-            HUD_ITEM_PIKMIN_STANDBY_ICON, &i_center, &i_size
-        )
-    ) {
-        draw_bitmap_in_box(standby_bmp, i_center, i_size * 0.8);
-        if(closest_group_member_distant) {
-            draw_bitmap_in_box(
-                bmp_distant_pikmin_marker, i_center, i_size * 0.8
-            );
-        }
-        draw_bitmap_in_box(bmp_bubble, i_center, i_size);
-    }
-    
-    //Standby group member maturity.
-    if(
-        hud_items.get_draw_data(
-            HUD_ITEM_PIKMIN_STANDBY_M_ICON, &i_center, &i_size
-        )
-    ) {
-        if(standby_mat_bmp) {
-            draw_bitmap_in_box(standby_mat_bmp, i_center, i_size * 0.8);
-            draw_bitmap_in_box(bmp_bubble, i_center, i_size);
-        }
-    }
-    
-    //Pikmin count "x".
-    if(hud_items.get_draw_data(HUD_ITEM_PIKMIN_STANDBY_X, &i_center, &i_size)) {
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "x"
-        );
-    }
-    
-    //Standby group member count.
-    if(
-        hud_items.get_draw_data(HUD_ITEM_PIKMIN_STANDBY_NR, &i_center, &i_size)
-    ) {
-        size_t n_standby_pikmin = 0;
-        if(cur_leader_ptr->group->cur_standby_type) {
-            for(
-                size_t m = 0; m < cur_leader_ptr->group->members.size();
-                ++m
-            ) {
-                mob* m_ptr = cur_leader_ptr->group->members[m];
-                if(
-                    m_ptr->subgroup_type_ptr ==
-                    cur_leader_ptr->group->cur_standby_type
-                ) {
-                    n_standby_pikmin++;
-                }
-            }
-        }
-        
-        draw_bitmap(bmp_counter_bubble_standby, i_center, i_size);
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            point(i_center.x + i_size.x * 0.4, i_center.y),
-            ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(n_standby_pikmin)
-        );
-    }
-    
-    //Group Pikmin count.
-    if(
-        hud_items.get_draw_data(HUD_ITEM_PIKMIN_GROUP_NR, &i_center, &i_size)
-    ) {
-        size_t pikmin_in_group = cur_leader_ptr->group->members.size();
-        for(size_t l = 0; l < leaders.size(); ++l) {
-            //If this leader is following the current one,
-            //then they're not a Pikmin.
-            //Subtract them from the group count total.
-            if(leaders[l]->following_group == cur_leader_ptr) {
-                pikmin_in_group--;
-            }
-        }
-        
-        draw_bitmap(bmp_counter_bubble_group, i_center, i_size);
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            point(i_center.x + i_size.x * 0.4, i_center.y),
-            ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(pikmin_in_group)
-        );
-    }
-    
-    //Field Pikmin count.
-    if(
-        hud_items.get_draw_data(HUD_ITEM_PIKMIN_FIELD_NR, &i_center, &i_size)
-    ) {
-        draw_bitmap(bmp_counter_bubble_field, i_center, i_size);
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            point(i_center.x + i_size.x * 0.4, i_center.y),
-            ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(pikmin_list.size())
-        );
-    }
-    
-    //Total Pikmin count.
-    if(
-        hud_items.get_draw_data(HUD_ITEM_PIKMIN_TOTAL_NR, &i_center, &i_size)
-    ) {
-        unsigned long total_pikmin = pikmin_list.size();
-        for(size_t o = 0; o < onions.size(); ++o) {
-            for(size_t m = 0; m < N_MATURITIES; ++m) {
-                total_pikmin += onions[o]->pikmin_inside[m];
-            }
-        }
-        
-        draw_bitmap(bmp_counter_bubble_total, i_center, i_size);
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            point(i_center.x + i_size.x * 0.4, i_center.y),
-            ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(total_pikmin)
-        );
-    }
-    
-    //Pikmin counter slashes.
-    if(
-        hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_1, &i_center, &i_size)
-    ) {
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
-        );
-    }
-    if(
-        hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_2, &i_center, &i_size)
-    ) {
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
-        );
-    }
-    if(
-        hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_3, &i_center, &i_size)
-    ) {
-        draw_compressed_text(
-            font_counter, al_map_rgb(255, 255, 255),
-            i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
-        );
-    }
-    
-    
-    //Sprays.
-    if(spray_types.size() > 0) {
-        size_t top_spray_nr;
-        if(spray_types.size() <= 2) top_spray_nr = 0;
-        else top_spray_nr = selected_spray;
-        
-        //Top or current spray.
-        if(
-            hud_items.get_draw_data(HUD_ITEM_SPRAY_1_ICON, &i_center, &i_size)
-        ) {
-            draw_bitmap_in_box(
-                spray_types[top_spray_nr].bmp_spray, i_center, i_size
-            );
-        }
-        
-        if(
-            hud_items.get_draw_data(HUD_ITEM_SPRAY_1_AMOUNT, &i_center, &i_size)
-        ) {
-            draw_compressed_text(
-                font_counter, al_map_rgb(255, 255, 255),
-                point(i_center.x - i_size.x / 2.0, i_center.y),
-                ALLEGRO_ALIGN_LEFT, 1, i_size,
-                "x" + i2s(spray_stats[top_spray_nr].nr_sprays)
-            );
-        }
-        
-        if(
-            hud_items.get_draw_data(HUD_ITEM_SPRAY_1_BUTTON, &i_center, &i_size)
-        ) {
-            for(size_t c = 0; c < controls[0].size(); ++c) {
-                if(
-                    (
-                        controls[0][c].action == BUTTON_USE_SPRAY_1 &&
-                        spray_types.size() <= 2
-                    ) || (
-                        controls[0][c].action == BUTTON_USE_SPRAY &&
-                        spray_types.size() >= 3
-                    )
-                ) {
-                    draw_control(font_main, controls[0][c], i_center, i_size);
-                    break;
-                }
-            }
-        }
-        
-        if(spray_types.size() == 2) {
-        
-            //Secondary spray, when there're only two types.
-            if(
-                hud_items.get_draw_data(
-                    HUD_ITEM_SPRAY_2_ICON, &i_center, &i_size
-                )
-            ) {
-                draw_bitmap_in_box(spray_types[1].bmp_spray, i_center, i_size);
-            }
-            
-            if(
-                hud_items.get_draw_data(
-                    HUD_ITEM_SPRAY_2_AMOUNT, &i_center, &i_size
-                )
-            ) {
-            
-                draw_compressed_text(
-                    font_counter, al_map_rgb(255, 255, 255),
-                    point(i_center.x - i_size.x / 2.0, i_center.y),
-                    ALLEGRO_ALIGN_LEFT, 1, i_size,
-                    "x" + i2s(spray_stats[1].nr_sprays)
-                );
-            }
-            
-            if(
-                hud_items.get_draw_data(
-                    HUD_ITEM_SPRAY_2_BUTTON, &i_center, &i_size
-                )
-            ) {
-                for(size_t c = 0; c < controls[0].size(); ++c) {
-                    if(controls[0][c].action == BUTTON_USE_SPRAY_2) {
-                        draw_control(
-                            font_main, controls[0][c], i_center, i_size
-                        );
-                        break;
-                    }
-                }
-            }
-            
-        } else if(spray_types.size() >= 3) {
-        
-            //Previous spray info.
-            if(
-                hud_items.get_draw_data(
-                    HUD_ITEM_SPRAY_PREV_ICON, &i_center, &i_size
-                )
-            ) {
-                draw_bitmap_in_box(
-                    spray_types[
-                        sum_and_wrap(selected_spray, -1, spray_types.size())
-                    ].bmp_spray,
-                    i_center, i_size
-                );
-            }
-            
-            if(
-                hud_items.get_draw_data(
-                    HUD_ITEM_SPRAY_PREV_BUTTON, &i_center, &i_size
-                )
-            ) {
-                for(size_t c = 0; c < controls[0].size(); ++c) {
-                    if(controls[0][c].action == BUTTON_PREV_SPRAY) {
-                        draw_control(
-                            font_main, controls[0][c], i_center, i_size
-                        );
-                        break;
-                    }
-                }
-            }
-            
-            //Next spray info.
-            if(
-                hud_items.get_draw_data(
-                    HUD_ITEM_SPRAY_NEXT_ICON, &i_center, &i_size
-                )
-            ) {
-                draw_bitmap_in_box(
-                    spray_types[
-                        sum_and_wrap(selected_spray, 1, spray_types.size())
-                    ].bmp_spray,
-                    i_center, i_size
-                );
-            }
-            
-            if(
-                hud_items.get_draw_data(
-                    HUD_ITEM_SPRAY_NEXT_BUTTON, &i_center, &i_size
-                )
-            ) {
-                for(size_t c = 0; c < controls[0].size(); ++c) {
-                    if(controls[0][c].action == BUTTON_NEXT_SPRAY) {
-                        draw_control(
-                            font_main, controls[0][c], i_center, i_size
-                        );
-                        break;
-                    }
-                }
-            }
-        }
-    }
+	if (VERSUS_ON == true) {
+		ALLEGRO_COLOR tc[MAX_PLAYERS] = { al_map_rgb(255, 0, 0),al_map_rgb(0, 255, 255),al_map_rgb(128, 255, 0),al_map_rgb(128, 0, 255) };
+		vector<world_component> components;
+		size_t teamnumber = 0;
+		if (cur_leader_ptrs[pnum]->team == MOB_TEAM_PLAYER_1) {
+			teamnumber = 0;
+		}
+		else	if (cur_leader_ptrs[pnum]->team == MOB_TEAM_PLAYER_2) {
+			teamnumber = 1;
+		}
+		else if (cur_leader_ptrs[pnum]->team == MOB_TEAM_PLAYER_3) {
+			teamnumber = 2;
+		}
+		else if (cur_leader_ptrs[pnum]->team == MOB_TEAM_PLAYER_4) {
+			teamnumber = 3;
+		}
+		for (size_t m = 0; m < marbles.size(); ++m) {
+			mob* mob_ptr = marbles[m];
+			//The mob proper.
+			world_component c;
+			c.mob_ptr = mob_ptr;
+			components.push_back(c);
+
+		}
+		sort(
+			components.begin(), components.end(),
+			[](world_component c1, world_component c2) -> bool {
+			if (c1.z == c2.z) {
+				return c1.nr < c2.nr;
+			}
+			return c1.z < c2.z;
+		}
+		);
+		for (size_t c = 0; c < components.size(); ++c) {
+			world_component* c_ptr = &components[c];
+			if (c_ptr->mob_ptr) {
+
+				c_ptr->mob_ptr->drawmarble(NULL,c);
+
+			}
+		}
+		//Leader health.
+		for (size_t l = 0; l < 1; ++l) {
+			if (leaders.size() < l + 1) continue;
+
+			size_t l_nr = sum_and_wrap(cur_leader_nrs[pnum], l, leaders.size());
+			size_t icon_id = HUD_ITEM_LEADER_1_ICON + l;
+			size_t health_id = HUD_ITEM_LEADER_1_HEALTH + l;
+
+			//Leader's icon.
+			if (hud_items.get_draw_data(icon_id, &i_center, &i_size)) {
+				al_draw_filled_circle(
+					i_center.x, i_center.y,
+					min(i_size.x, i_size.y) / 2.0f,
+					change_alpha(leaders[l_nr]->type->main_color, 128)
+				);
+				draw_bitmap_with_color_in_box(
+					leaders[l_nr]->lea_type->bmp_icon,
+					i_center, i_size
+				);
+				draw_bitmap_with_color_in_box(bmp_bubble, i_center, i_size, 0, tc[teamnumber]);
+
+			}
+
+			//Health wheel.
+			if (hud_items.get_draw_data(health_id, &i_center, &i_size)) {
+				draw_health(
+					i_center,
+					leaders[l_nr]->health, leaders[l_nr]->type->max_health,
+					min(i_size.x, i_size.y) * 0.4f,
+					true
+				);
+				draw_bitmap_with_color_in_box(bmp_hard_bubble, i_center, i_size,0,tc[teamnumber]);
+			}
+
+		}
+
+		//Sun Meter.
+		if (hud_items.get_draw_data(HUD_ITEM_TIME, &i_center, &i_size)) {
+			unsigned char n_hours =
+				(max_score);
+			float day_passed_ratio =
+				(float)(playerpts[pnum]) /
+				(float)(max_score);
+			float sun_radius = i_size.y / 2.0;
+			float first_dot_x = (i_center.x - i_size.x / 2.0) + sun_radius;
+			float last_dot_x = (i_center.x + i_size.x / 2.0) - sun_radius;
+			float dots_y = i_center.y;
+			//Width, from the center of the first dot to the center of the last.
+			float dots_span = last_dot_x - first_dot_x;
+			float dot_interval = dots_span / (float)n_hours;
+			float sun_meter_sun_angle = area_time_passed * SUN_METER_SUN_SPIN_SPEED;
+			
+			//Larger bubbles at the start, middle and end of the meter.
+			al_hold_bitmap_drawing(true);
+			draw_bitmap_with_color(
+				bmp_hard_bubble, point(first_dot_x + dots_span * 0.0, dots_y),
+				point(sun_radius * 0.9, sun_radius * 0.9), 0, tc[teamnumber]
+			);
+			draw_bitmap_with_color(
+				bmp_hard_bubble, point(first_dot_x + dots_span * 0.5, dots_y),
+				point(sun_radius * 0.9, sun_radius * 0.9), 0, tc[teamnumber]
+			);
+			draw_bitmap_with_color(
+				bmp_hard_bubble, point(first_dot_x + dots_span * 1.0, dots_y),
+				point(sun_radius * 0.9, sun_radius * 0.9), 0, tc[teamnumber]
+			);
+
+			for (unsigned char h = 0; h < n_hours + 1; ++h) {
+				draw_bitmap_with_color(
+					bmp_hard_bubble,
+					point(first_dot_x + h * dot_interval, dots_y),
+					point(sun_radius * 0.6, sun_radius * 0.6), 0, tc[teamnumber]
+				);
+			}
+			al_hold_bitmap_drawing(false);
+
+			//Static sun.
+			draw_bitmap_with_color(
+				bmp_sun,
+				point(first_dot_x + day_passed_ratio * dots_span, dots_y),
+				point(sun_radius * 1.5, sun_radius * 1.5)
+			);
+			//Spinning sun.
+			draw_bitmap_with_color(
+				bmp_sun,
+				point(first_dot_x + day_passed_ratio * dots_span, dots_y),
+				point(sun_radius * 1.5, sun_radius * 1.5),
+				sun_meter_sun_angle
+			);
+			//Bubble in front the sun.
+			draw_bitmap_with_color(
+				bmp_hard_bubble,
+				point(first_dot_x + day_passed_ratio * dots_span, dots_y),
+				point(sun_radius * 1.5, sun_radius * 1.5),
+				0, al_map_rgb(255, 192, 128)
+			);
+		}
+
+
+		//Standby group member.
+
+		ALLEGRO_BITMAP* standby_bmp = NULL;
+		ALLEGRO_BITMAP* standby_mat_bmp = NULL;
+		if (closest_group_member[pnum] && cur_leader_ptrs[pnum]->group->cur_standby_type) {
+			SUBGROUP_TYPE_CATEGORIES c =
+				cur_leader_ptrs[pnum]->group->cur_standby_type->get_category();
+
+			if (c == SUBGROUP_TYPE_CATEGORY_LEADER) {
+				leader* l_ptr = dynamic_cast<leader*>(closest_group_member[pnum]);
+				standby_bmp = l_ptr->lea_type->bmp_icon;
+
+			}
+			else if (c == SUBGROUP_TYPE_CATEGORY_PIKMIN) {
+				pikmin* p_ptr = dynamic_cast<pikmin*>(closest_group_member[pnum]);
+				standby_bmp = cur_leader_ptrs[pnum]->group->cur_standby_type->get_icon();
+				standby_mat_bmp =
+					p_ptr->pik_type->bmp_maturity_icon[p_ptr->maturity];
+
+			}
+			else {
+				standby_bmp = cur_leader_ptrs[pnum]->group->cur_standby_type->get_icon();
+
+			}
+		}
+		if (!standby_bmp) standby_bmp = bmp_no_pikmin_bubble;
+
+		//Standby group member icon.
+		if (
+			hud_items.get_draw_data(
+				HUD_ITEM_PIKMIN_STANDBY_ICON, &i_center, &i_size
+			)
+			) {
+			draw_bitmap_with_color_in_box(standby_bmp, point(i_center.x, i_center.y), i_size * 0.8);
+			if (closest_group_member_distant[pnum]) {
+				draw_bitmap_with_color_in_box(
+					bmp_distant_pikmin_marker, point(i_center.x, i_center.y), i_size * 0.8
+				);
+			}
+			draw_bitmap_with_color_in_box(bmp_bubble, point(i_center.x, i_center.y), i_size, 0, tc[teamnumber]);
+		}
+
+		//Standby group member maturity.
+		if (
+			hud_items.get_draw_data(
+				HUD_ITEM_PIKMIN_STANDBY_M_ICON, &i_center, &i_size
+			)
+			) {
+			if (standby_mat_bmp) {
+				draw_bitmap_with_color_in_box(standby_mat_bmp, point(i_center.x, i_center.y), i_size * 0.8);
+				draw_bitmap_with_color_in_box(bmp_bubble, point(i_center.x, i_center.y), i_size, 0, tc[teamnumber]);
+			}
+		}
+
+		//Pikmin count "x".
+		if (hud_items.get_draw_data(HUD_ITEM_PIKMIN_STANDBY_X, &i_center, &i_size)) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				point(i_center.x, i_center.y), ALLEGRO_ALIGN_CENTER, 1, i_size, "x"
+			);
+		}
+
+		//Standby group member count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_STANDBY_NR, &i_center, &i_size)
+			) {
+			size_t n_standby_pikmin = 0;
+			if (cur_leader_ptrs[pnum]->group->cur_standby_type) {
+				for (
+					size_t m = 0; m < cur_leader_ptrs[pnum]->group->members.size();
+					++m
+					) {
+					mob* m_ptr = cur_leader_ptrs[pnum]->group->members[m];
+					if (
+						m_ptr->subgroup_type_ptr ==
+						cur_leader_ptrs[pnum]->group->cur_standby_type
+						) {
+						n_standby_pikmin++;
+					}
+				}
+			}
+
+			draw_bitmap_with_color(bmp_counter_bubble_standby, point(i_center.x, i_center.y), i_size,0, tc[teamnumber]);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(n_standby_pikmin)
+			);
+		}
+
+		//Group Pikmin count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_GROUP_NR, &i_center, &i_size)
+			) {
+			size_t pikmin_in_group = cur_leader_ptrs[pnum]->group->members.size();
+			for (size_t l = 0; l < leaders.size(); ++l) {
+				//If this leader is following the current one,
+				//then they're not a Pikmin.
+				//Subtract them from the group count total.
+				if (leaders[l]->following_group == cur_leader_ptrs[pnum]) {
+					pikmin_in_group--;
+				}
+			}
+
+			draw_bitmap_with_color(bmp_counter_bubble_group, i_center, i_size, 0, tc[teamnumber]);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(pikmin_in_group)
+			);
+		}
+		//Field Pikmin count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_FIELD_NR, &i_center, &i_size)
+			) {
+			draw_bitmap_with_color(bmp_counter_bubble_field, i_center, i_size, 0, tc[teamnumber]);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(pikmin_list.size())
+			);
+		}
+
+		//Total Pikmin count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_TOTAL_NR, &i_center, &i_size)
+			) {
+			unsigned long total_pikmin = pikmin_list.size();
+			for (size_t o = 0; o < onions.size(); ++o) {
+				for (size_t m = 0; m < N_MATURITIES; ++m) {
+					total_pikmin += onions[o]->pikmin_inside[m];
+				}
+			}
+
+			draw_bitmap_with_color(bmp_counter_bubble_total, i_center, i_size);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(total_pikmin)
+			);
+		}
+
+		//Pikmin counter slashes.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_1, &i_center, &i_size)
+			) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
+			);
+		}
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_2, &i_center, &i_size)
+			) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
+			);
+		}
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_3, &i_center, &i_size)
+			) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255,255,255),
+				i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
+			);
+		}
+
+
+		//Sprays.
+		if (spray_types.size() > 0) {
+			size_t top_spray_nr;
+			if (spray_types.size() <= 2) top_spray_nr = 0;
+			else top_spray_nr = selected_spray;
+
+			//Top or current spray.
+			if (
+				hud_items.get_draw_data(HUD_ITEM_SPRAY_1_ICON, &i_center, &i_size)
+				) {
+				draw_bitmap_with_color_in_box(
+					spray_types[top_spray_nr].bmp_spray, i_center, i_size
+				);
+			}
+
+			if (
+				hud_items.get_draw_data(HUD_ITEM_SPRAY_1_AMOUNT, &i_center, &i_size)
+				) {
+				draw_compressed_text(
+					font_counter, al_map_rgb(255,255,255),
+					point(i_center.x - i_size.x / 2.0, i_center.y),
+					ALLEGRO_ALIGN_LEFT, 1, i_size,
+					"x" + i2s(spray_stats[top_spray_nr].nr_sprays)
+				);
+			}
+
+			if (
+				hud_items.get_draw_data(HUD_ITEM_SPRAY_1_BUTTON, &i_center, &i_size)
+				) {
+				for (size_t c = 0; c < controls[0].size(); ++c) {
+					if (
+						(
+							controls[0][c].action == BUTTON_USE_SPRAY_1 &&
+							spray_types.size() <= 2
+							) || (
+								controls[0][c].action == BUTTON_USE_SPRAY &&
+								spray_types.size() >= 3
+								)
+						) {
+						draw_control(font_main, controls[0][c], i_center, i_size);
+						break;
+					}
+				}
+			}
+
+			if (spray_types.size() == 2) {
+
+				//Secondary spray, when there're only two types.
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_2_ICON, &i_center, &i_size
+					)
+					) {
+					draw_bitmap_with_color_in_box(spray_types[1].bmp_spray, i_center, i_size);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_2_AMOUNT, &i_center, &i_size
+					)
+					) {
+
+					draw_compressed_text(
+						font_counter, al_map_rgb(255,255,255),
+						point(i_center.x - i_size.x / 2.0, i_center.y),
+						ALLEGRO_ALIGN_LEFT, 1, i_size,
+						"x" + i2s(spray_stats[1].nr_sprays)
+					);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_2_BUTTON, &i_center, &i_size
+					)
+					) {
+					for (size_t c = 0; c < controls[0].size(); ++c) {
+						if (controls[0][c].action == BUTTON_USE_SPRAY_2) {
+							draw_control(
+								font_main, controls[0][c], i_center, i_size
+							);
+							break;
+						}
+					}
+				}
+
+			}
+			else if (spray_types.size() >= 3) {
+
+				//Previous spray info.
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_PREV_ICON, &i_center, &i_size
+					)
+					) {
+					draw_bitmap_with_color_in_box(
+						spray_types[
+							sum_and_wrap(selected_spray, -1, spray_types.size())
+						].bmp_spray,
+						i_center, i_size
+								);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_PREV_BUTTON, &i_center, &i_size
+					)
+					) {
+					for (size_t c = 0; c < controls[0].size(); ++c) {
+						if (controls[0][c].action == BUTTON_PREV_SPRAY) {
+							draw_control(
+								font_main, controls[0][c], i_center, i_size
+							);
+							break;
+						}
+					}
+				}
+
+				//Next spray info.
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_NEXT_ICON, &i_center, &i_size
+					)
+					) {
+					draw_bitmap_with_color_in_box(
+						spray_types[
+							sum_and_wrap(selected_spray, 1, spray_types.size())
+						].bmp_spray,
+						i_center, i_size
+								);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_NEXT_BUTTON, &i_center, &i_size
+					)
+					) {
+					for (size_t c = 0; c < controls[0].size(); ++c) {
+						if (controls[0][c].action == BUTTON_NEXT_SPRAY) {
+							draw_control(
+								font_main, controls[0][c], i_center, i_size
+							);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
+	else{
+		//Leader health.
+		for (size_t l = 0; l < 3; ++l) {
+			if (leaders.size() < l + 1) continue;
+
+			size_t l_nr = sum_and_wrap(cur_leader_nrs[pnum], l, leaders.size());
+			size_t icon_id = HUD_ITEM_LEADER_1_ICON + l;
+			size_t health_id = HUD_ITEM_LEADER_1_HEALTH + l;
+
+			//Leader's icon.
+			if (hud_items.get_draw_data(icon_id, &i_center, &i_size)) {
+				al_draw_filled_circle(
+					i_center.x, i_center.y,
+					min(i_size.x, i_size.y) / 2.0f,
+					change_alpha(leaders[l_nr]->type->main_color, 128)
+				);
+				draw_bitmap_in_box(
+					leaders[l_nr]->lea_type->bmp_icon,
+					i_center, i_size
+				);
+				draw_bitmap_in_box(bmp_bubble, i_center, i_size);
+
+			}
+
+			//Health wheel.
+			if (hud_items.get_draw_data(health_id, &i_center, &i_size)) {
+				draw_health(
+					i_center,
+					leaders[l_nr]->health, leaders[l_nr]->type->max_health,
+					min(i_size.x, i_size.y) * 0.4f,
+					true
+				);
+				draw_bitmap_in_box(bmp_hard_bubble, i_center, i_size);
+			}
+
+		}
+
+		//Sun Meter.
+		if (hud_items.get_draw_data(HUD_ITEM_TIME, &i_center, &i_size)) {
+			unsigned char n_hours =
+				(day_minutes_end - day_minutes_start) / 60.0f;
+			float day_passed_ratio =
+				(float)(day_minutes - day_minutes_start) /
+				(float)(day_minutes_end - day_minutes_start);
+			float sun_radius = i_size.y / 2.0;
+			float first_dot_x = (i_center.x - i_size.x / 2.0) + sun_radius;
+			float last_dot_x = (i_center.x + i_size.x / 2.0) - sun_radius;
+			float dots_y = i_center.y;
+			//Width, from the center of the first dot to the center of the last.
+			float dots_span = last_dot_x - first_dot_x;
+			float dot_interval = dots_span / (float)n_hours;
+			float sun_meter_sun_angle = area_time_passed * SUN_METER_SUN_SPIN_SPEED;
+
+			//Larger bubbles at the start, middle and end of the meter.
+			al_hold_bitmap_drawing(true);
+			draw_bitmap(
+				bmp_hard_bubble, point(first_dot_x + dots_span * 0.0, dots_y),
+				point(sun_radius * 0.9, sun_radius * 0.9)
+			);
+			draw_bitmap(
+				bmp_hard_bubble, point(first_dot_x + dots_span * 0.5, dots_y),
+				point(sun_radius * 0.9, sun_radius * 0.9)
+			);
+			draw_bitmap(
+				bmp_hard_bubble, point(first_dot_x + dots_span * 1.0, dots_y),
+				point(sun_radius * 0.9, sun_radius * 0.9)
+			);
+
+			for (unsigned char h = 0; h < n_hours + 1; ++h) {
+				draw_bitmap(
+					bmp_hard_bubble,
+					point(first_dot_x + h * dot_interval, dots_y),
+					point(sun_radius * 0.6, sun_radius * 0.6)
+				);
+			}
+			al_hold_bitmap_drawing(false);
+
+			//Static sun.
+			draw_bitmap(
+				bmp_sun,
+				point(first_dot_x + day_passed_ratio * dots_span, dots_y),
+				point(sun_radius * 1.5, sun_radius * 1.5)
+			);
+			//Spinning sun.
+			draw_bitmap(
+				bmp_sun,
+				point(first_dot_x + day_passed_ratio * dots_span, dots_y),
+				point(sun_radius * 1.5, sun_radius * 1.5),
+				sun_meter_sun_angle
+			);
+			//Bubble in front the sun.
+			draw_bitmap(
+				bmp_hard_bubble,
+				point(first_dot_x + day_passed_ratio * dots_span, dots_y),
+				point(sun_radius * 1.5, sun_radius * 1.5),
+				0, al_map_rgb(255, 192, 128)
+			);
+		}
+
+		//Day number bubble.
+		if (hud_items.get_draw_data(HUD_ITEM_DAY_BUBBLE, &i_center, &i_size)) {
+			draw_bitmap_in_box(bmp_day_bubble, i_center, i_size);
+		}
+
+		//Day number text.
+		if (hud_items.get_draw_data(HUD_ITEM_DAY_NUMBER, &i_center, &i_size)) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				i_center, ALLEGRO_ALIGN_CENTER, 1,
+				i_size, i2s(day)
+			);
+		}
+
+		//Standby group member.
+
+		ALLEGRO_BITMAP* standby_bmp = NULL;
+		ALLEGRO_BITMAP* standby_mat_bmp = NULL;
+		if (closest_group_member[pnum] && cur_leader_ptrs[pnum]->group->cur_standby_type) {
+			SUBGROUP_TYPE_CATEGORIES c =
+				cur_leader_ptrs[pnum]->group->cur_standby_type->get_category();
+
+			if (c == SUBGROUP_TYPE_CATEGORY_LEADER) {
+				leader* l_ptr = dynamic_cast<leader*>(closest_group_member[pnum]);
+				standby_bmp = l_ptr->lea_type->bmp_icon;
+
+			}
+			else if (c == SUBGROUP_TYPE_CATEGORY_PIKMIN) {
+				pikmin* p_ptr = dynamic_cast<pikmin*>(closest_group_member[pnum]);
+				standby_bmp = cur_leader_ptrs[pnum]->group->cur_standby_type->get_icon();
+				standby_mat_bmp =
+					p_ptr->pik_type->bmp_maturity_icon[p_ptr->maturity];
+
+			}
+			else {
+				standby_bmp = cur_leader_ptrs[pnum]->group->cur_standby_type->get_icon();
+
+			}
+		}
+		if (!standby_bmp) standby_bmp = bmp_no_pikmin_bubble;
+
+		//Standby group member icon.
+		if (
+			hud_items.get_draw_data(
+				HUD_ITEM_PIKMIN_STANDBY_ICON, &i_center, &i_size
+			)
+			) {
+			draw_bitmap_in_box(standby_bmp, point(i_center.x, i_center.y), i_size * 0.8);
+			if (closest_group_member_distant[pnum]) {
+				draw_bitmap_in_box(
+					bmp_distant_pikmin_marker, point(i_center.x, i_center.y), i_size * 0.8
+				);
+			}
+			draw_bitmap_in_box(bmp_bubble, point(i_center.x, i_center.y), i_size);
+		}
+
+		//Standby group member maturity.
+		if (
+			hud_items.get_draw_data(
+				HUD_ITEM_PIKMIN_STANDBY_M_ICON, &i_center, &i_size
+			)
+			) {
+			if (standby_mat_bmp) {
+				draw_bitmap_in_box(standby_mat_bmp, point(i_center.x, i_center.y), i_size * 0.8);
+				draw_bitmap_in_box(bmp_bubble, point(i_center.x, i_center.y), i_size);
+			}
+		}
+
+		//Pikmin count "x".
+		if (hud_items.get_draw_data(HUD_ITEM_PIKMIN_STANDBY_X, &i_center, &i_size)) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				point(i_center.x, i_center.y), ALLEGRO_ALIGN_CENTER, 1, i_size, "x"
+			);
+		}
+
+		//Standby group member count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_STANDBY_NR, &i_center, &i_size)
+			) {
+			size_t n_standby_pikmin = 0;
+			if (cur_leader_ptrs[pnum]->group->cur_standby_type) {
+				for (
+					size_t m = 0; m < cur_leader_ptrs[pnum]->group->members.size();
+					++m
+					) {
+					mob* m_ptr = cur_leader_ptrs[pnum]->group->members[m];
+					if (
+						m_ptr->subgroup_type_ptr ==
+						cur_leader_ptrs[pnum]->group->cur_standby_type
+						) {
+						n_standby_pikmin++;
+					}
+				}
+			}
+
+			draw_bitmap(bmp_counter_bubble_standby, point(i_center.x, i_center.y), i_size);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(n_standby_pikmin)
+			);
+		}
+
+		//Group Pikmin count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_GROUP_NR, &i_center, &i_size)
+			) {
+			size_t pikmin_in_group = cur_leader_ptrs[pnum]->group->members.size();
+			for (size_t l = 0; l < leaders.size(); ++l) {
+				//If this leader is following the current one,
+				//then they're not a Pikmin.
+				//Subtract them from the group count total.
+				if (leaders[l]->following_group == cur_leader_ptrs[pnum]) {
+					pikmin_in_group--;
+				}
+			}
+
+			draw_bitmap(bmp_counter_bubble_group, i_center, i_size);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(pikmin_in_group)
+			);
+		}
+		//Field Pikmin count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_FIELD_NR, &i_center, &i_size)
+			) {
+			draw_bitmap(bmp_counter_bubble_field, i_center, i_size);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(pikmin_list.size())
+			);
+		}
+
+		//Total Pikmin count.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_TOTAL_NR, &i_center, &i_size)
+			) {
+			unsigned long total_pikmin = pikmin_list.size();
+			for (size_t o = 0; o < onions.size(); ++o) {
+				for (size_t m = 0; m < N_MATURITIES; ++m) {
+					total_pikmin += onions[o]->pikmin_inside[m];
+				}
+			}
+
+			draw_bitmap(bmp_counter_bubble_total, i_center, i_size);
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				point(i_center.x + i_size.x * 0.4, i_center.y),
+				ALLEGRO_ALIGN_RIGHT, 1, i_size * 0.7, i2s(total_pikmin)
+			);
+		}
+
+		//Pikmin counter slashes.
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_1, &i_center, &i_size)
+			) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
+			);
+		}
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_2, &i_center, &i_size)
+			) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
+			);
+		}
+		if (
+			hud_items.get_draw_data(HUD_ITEM_PIKMIN_SLASH_3, &i_center, &i_size)
+			) {
+			draw_compressed_text(
+				font_counter, al_map_rgb(255, 255, 255),
+				i_center, ALLEGRO_ALIGN_CENTER, 1, i_size, "/"
+			);
+		}
+
+
+		//Sprays.
+		if (spray_types.size() > 0) {
+			size_t top_spray_nr;
+			if (spray_types.size() <= 2) top_spray_nr = 0;
+			else top_spray_nr = selected_spray;
+
+			//Top or current spray.
+			if (
+				hud_items.get_draw_data(HUD_ITEM_SPRAY_1_ICON, &i_center, &i_size)
+				) {
+				draw_bitmap_in_box(
+					spray_types[top_spray_nr].bmp_spray, i_center, i_size
+				);
+			}
+
+			if (
+				hud_items.get_draw_data(HUD_ITEM_SPRAY_1_AMOUNT, &i_center, &i_size)
+				) {
+				draw_compressed_text(
+					font_counter, al_map_rgb(255, 255, 255),
+					point(i_center.x - i_size.x / 2.0, i_center.y),
+					ALLEGRO_ALIGN_LEFT, 1, i_size,
+					"x" + i2s(spray_stats[top_spray_nr].nr_sprays)
+				);
+			}
+
+			if (
+				hud_items.get_draw_data(HUD_ITEM_SPRAY_1_BUTTON, &i_center, &i_size)
+				) {
+				for (size_t c = 0; c < controls[0].size(); ++c) {
+					if (
+						(
+							controls[0][c].action == BUTTON_USE_SPRAY_1 &&
+							spray_types.size() <= 2
+							) || (
+								controls[0][c].action == BUTTON_USE_SPRAY &&
+								spray_types.size() >= 3
+								)
+						) {
+						draw_control(font_main, controls[0][c], i_center, i_size);
+						break;
+					}
+				}
+			}
+
+			if (spray_types.size() == 2) {
+
+				//Secondary spray, when there're only two types.
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_2_ICON, &i_center, &i_size
+					)
+					) {
+					draw_bitmap_in_box(spray_types[1].bmp_spray, i_center, i_size);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_2_AMOUNT, &i_center, &i_size
+					)
+					) {
+
+					draw_compressed_text(
+						font_counter, al_map_rgb(255, 255, 255),
+						point(i_center.x - i_size.x / 2.0, i_center.y),
+						ALLEGRO_ALIGN_LEFT, 1, i_size,
+						"x" + i2s(spray_stats[1].nr_sprays)
+					);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_2_BUTTON, &i_center, &i_size
+					)
+					) {
+					for (size_t c = 0; c < controls[0].size(); ++c) {
+						if (controls[0][c].action == BUTTON_USE_SPRAY_2) {
+							draw_control(
+								font_main, controls[0][c], i_center, i_size
+							);
+							break;
+						}
+					}
+				}
+
+			}
+			else if (spray_types.size() >= 3) {
+
+				//Previous spray info.
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_PREV_ICON, &i_center, &i_size
+					)
+					) {
+					draw_bitmap_in_box(
+						spray_types[
+							sum_and_wrap(selected_spray, -1, spray_types.size())
+						].bmp_spray,
+						i_center, i_size
+								);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_PREV_BUTTON, &i_center, &i_size
+					)
+					) {
+					for (size_t c = 0; c < controls[0].size(); ++c) {
+						if (controls[0][c].action == BUTTON_PREV_SPRAY) {
+							draw_control(
+								font_main, controls[0][c], i_center, i_size
+							);
+							break;
+						}
+					}
+				}
+
+				//Next spray info.
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_NEXT_ICON, &i_center, &i_size
+					)
+					) {
+					draw_bitmap_in_box(
+						spray_types[
+							sum_and_wrap(selected_spray, 1, spray_types.size())
+						].bmp_spray,
+						i_center, i_size
+								);
+				}
+
+				if (
+					hud_items.get_draw_data(
+						HUD_ITEM_SPRAY_NEXT_BUTTON, &i_center, &i_size
+					)
+					) {
+					for (size_t c = 0; c < controls[0].size(); ++c) {
+						if (controls[0][c].action == BUTTON_NEXT_SPRAY) {
+							draw_control(
+								font_main, controls[0][c], i_center, i_size
+							);
+							break;
+						}
+					}
+				}
+			}
+		}
+	}
 }
 
 
@@ -937,107 +1398,110 @@ void gameplay::draw_ingame_text() {
     }
     
     bool done = false;
-    
-    //Lying down stop notification.
-    if(
-        cur_leader_ptr->carry_info &&
-        whistle_control_id != INVALID
-    ) {
-        draw_notification(
-            point(
-                cur_leader_ptr->pos.x,
-                cur_leader_ptr->pos.y -
-                cur_leader_ptr->type->radius
-            ),
-            "Get up", &controls[0][whistle_control_id]
-        );
-        done = true;
-    }
-    
-    //Pluck stop notification.
-    if(
-        !done &&
-        cur_leader_ptr->auto_plucking &&
-        whistle_control_id != INVALID
-    ) {
-        draw_notification(
-            point(
-                cur_leader_ptr->pos.x,
-                cur_leader_ptr->pos.y -
-                cur_leader_ptr->type->radius
-            ),
-            "Stop", &controls[0][whistle_control_id]
-        );
-        done = true;
-    }
-    
-    //Ship healing notification.
-    if(
-        !done &&
-        close_to_ship_to_heal &&
-        click_control_id != INVALID
-    ) {
-        draw_notification(
-            point(
-                close_to_ship_to_heal->beam_final_pos.x,
-                close_to_ship_to_heal->beam_final_pos.y -
-                close_to_ship_to_heal->shi_type->beam_radius
-            ),
-            "Repair suit", &controls[0][click_control_id]
-        );
-        done = true;
-    }
-    
-    //Interactable mob notification.
-    if(
-        !done &&
-        close_to_interactable_to_use &&
-        click_control_id != INVALID
-    ) {
-        float pivot_y =
-            close_to_interactable_to_use->pos.y -
-            close_to_interactable_to_use->type->radius;
-        draw_notification(
-            point(close_to_interactable_to_use->pos.x, pivot_y),
-            close_to_interactable_to_use->int_type->prompt_text,
-            &controls[0][click_control_id]
-        );
-        done = true;
-    }
-    
-    //Pikmin pluck notification.
-    if(
-        !done &&
-        close_to_pikmin_to_pluck &&
-        click_control_id != INVALID
-    ) {
-        draw_notification(
-            point(
-                close_to_pikmin_to_pluck->pos.x,
-                close_to_pikmin_to_pluck->pos.y -
-                close_to_pikmin_to_pluck->type->radius
-            ),
-            "Pluck", &controls[0][click_control_id]
-        );
-        done = true;
-    }
-    
-    //Onion open notification.
-    if(
-        !done &&
-        close_to_onion_to_open &&
-        click_control_id != INVALID
-    ) {
-        draw_notification(
-            point(
-                close_to_onion_to_open->pos.x,
-                close_to_onion_to_open->pos.y -
-                close_to_onion_to_open->type->radius
-            ),
-            "Call a Pikmin", &controls[0][click_control_id]
-        );
-        done = true;
-    }
+
+		//Lying down stop notification.
+		if (
+			cur_leader_ptrs[pnum]->carry_info &&
+			whistle_control_id[pnum] != INVALID
+			) {
+			draw_notification(
+				point(
+					cur_leader_ptrs[pnum]->pos.x,
+					cur_leader_ptrs[pnum]->pos.y -
+					cur_leader_ptrs[pnum]->type->radius
+				),
+				"Get up", &controls[pnum][whistle_control_id[pnum]]
+			);
+			done = true;
+		}
+
+		//Pluck stop notification.
+		if (
+			!done &&
+			cur_leader_ptrs[pnum]->auto_plucking &&
+			whistle_control_id[pnum] != INVALID
+			) {
+			draw_notification(
+				point(
+					cur_leader_ptrs[pnum]->pos.x,
+					cur_leader_ptrs[pnum]->pos.y -
+					cur_leader_ptrs[pnum]->type->radius
+				),
+				"Stop", &controls[pnum][whistle_control_id[pnum]]
+			);
+			done = true;
+		}
+
+		//Ship healing notification.
+		if (
+			!done &&
+			close_to_ship_to_heal[pnum] &&
+			click_control_id != INVALID
+			) {
+			draw_notification(
+				point(
+					close_to_ship_to_heal[pnum]->beam_final_pos.x,
+					close_to_ship_to_heal[pnum]->beam_final_pos.y -
+					close_to_ship_to_heal[pnum]->shi_type->beam_radius
+				),
+				"Repair suit", &controls[pnum][click_control_id]
+			);
+			done = true;
+		}
+
+		//Interactable mob notification.
+		if (
+			!done &&
+			close_to_interactable_to_use[pnum] &&
+			click_control_id != INVALID
+			) {
+			float pivot_y =
+				close_to_interactable_to_use[pnum]->pos.y -
+				close_to_interactable_to_use[pnum]->type->radius;
+			draw_notification(
+				point(close_to_interactable_to_use[pnum]->pos.x, pivot_y),
+				close_to_interactable_to_use[pnum]->int_type->prompt_text,
+				&controls[pnum][click_control_id]
+			);
+			done = true;
+		}
+
+		//Pikmin pluck notification.
+		if (
+			!done &&
+			close_to_pikmin_to_pluck[pnum] &&
+			click_control_id != INVALID &&
+			&controls[pnum][click_control_id]
+			) {
+			draw_notification(
+				point(
+					close_to_pikmin_to_pluck[pnum]->pos.x,
+					close_to_pikmin_to_pluck[pnum]->pos.y -
+					close_to_pikmin_to_pluck[pnum]->type->radius
+				),
+				"Pluck", &controls[pnum][click_control_id]
+			);
+			done = true;
+		}
+
+		//Onion open notification.
+		if (
+			!done &&
+			close_to_onion_to_open[pnum] &&
+			click_control_id != INVALID &&
+			&controls[pnum][click_control_id]
+			) {
+			draw_notification(
+				point(
+					close_to_onion_to_open[pnum]->pos.x,
+					close_to_onion_to_open[pnum]->pos.y -
+					close_to_onion_to_open[pnum]->type->radius
+				),
+				"Call a Pikmin", &controls[pnum][click_control_id]
+			);
+			done = true;
+		}
+
 }
 
 
@@ -1053,23 +1517,23 @@ void gameplay::draw_lighting_filter() {
         //Start by drawing the central fog fade out effect.
         
         point fog_top_left =
-            cam_pos -
+            cam_pos[pnum] -
             point(
                 cur_area_data.weather_condition.fog_far,
                 cur_area_data.weather_condition.fog_far
             );
         point fog_bottom_right =
-            cam_pos +
+            cam_pos[pnum] +
             point(
                 cur_area_data.weather_condition.fog_far,
                 cur_area_data.weather_condition.fog_far
             );
         al_transform_coordinates(
-            &world_to_screen_transform,
+            &world_to_screen_transform[pnum],
             &fog_top_left.x, &fog_top_left.y
         );
         al_transform_coordinates(
-            &world_to_screen_transform,
+            &world_to_screen_transform[pnum],
             &fog_bottom_right.x, &fog_bottom_right.y
         );
         
@@ -1144,7 +1608,7 @@ void gameplay::draw_lighting_filter() {
             
             point pos = mobs[m]->pos;
             al_transform_coordinates(
-                &world_to_screen_transform,
+                &world_to_screen_transform[pnum],
                 &pos.x, &pos.y
             );
             float radius = mobs[m]->type->radius * 4.0 * cam_zoom;
@@ -1317,109 +1781,114 @@ void gameplay::draw_tree_shadows() {
  * Draws the components that make up the game world: layout, objects, etc.
  */
 void gameplay::draw_world_components(ALLEGRO_BITMAP* bmp_output) {
-    vector<world_component> components;
-    //Let's reserve some space. We might need more or less,
-    //but this is a nice estimate.
-    components.reserve(
-        cur_area_data.sectors.size() + //Sectors
-        mobs.size() + //Mob shadows
-        mobs.size() + //Mobs
-        particles.get_count() //Particles
-    );
-    
+	vector<world_component> components;
+			//Let's reserve some space. We might need more or less,
+			//but this is a nice estimate.
+			components.reserve(
+				cur_area_data.sectors.size() + //Sectors
+				mobs.size() + //Mob shadows
+				mobs.size() + //Mobs
+				particles.get_count() //Particles
+			);
+
     //Sectors.
-    for(size_t s = 0; s < cur_area_data.sectors.size(); ++s) {
-        sector* s_ptr = cur_area_data.sectors[s];
-        
-        if(
-            !bmp_output &&
-            !rectangles_intersect(
-                s_ptr->bbox[0], s_ptr->bbox[1],
-                cam_box[0], cam_box[1]
-            )
-        ) {
-            //Off-camera.
-            continue;
-        }
-        
-        world_component c;
-        c.sector_ptr = s_ptr;
-        c.z = s_ptr->z;
-        components.push_back(c);
-    }
-    
-    //Particles.
-    particles.fill_component_list(components, cam_box[0], cam_box[1]);
-    
-    //Mobs.
-    for(size_t m = 0; m < mobs.size(); ++m) {
-        mob* mob_ptr = mobs[m];
-        
-        if(!bmp_output && mob_ptr->is_off_camera()) {
-            //Off-camera.
-            continue;
-        }
-        
-        if(mob_ptr->hide) continue;
-        
-        //Shadows.
-        if(mob_ptr->type->casts_shadow) {
-            world_component c;
-            c.mob_shadow_ptr = mob_ptr;
-            if(mob_ptr->standing_on_mob) {
-                c.z =
-                    mob_ptr->standing_on_mob->z +
-                    mob_ptr->standing_on_mob->height;
-            } else {
-                c.z = mob_ptr->ground_sector->z;
-            }
-            components.push_back(c);
-        }
-        
-        //Limbs.
-        if(mob_ptr->parent && mob_ptr->parent->limb_anim.anim_db) {
-            unsigned char method = mob_ptr->parent->limb_draw_method;
-            world_component c;
-            c.mob_limb_ptr = mob_ptr;
-            
-            if(method == LIMB_DRAW_BELOW_BOTH) {
-                c.z = min(mob_ptr->z, mob_ptr->parent->m->z);
-            } else if(method == LIMB_DRAW_BELOW_CHILD) {
-                c.z = mob_ptr->z;
-            } else if(method == LIMB_DRAW_BELOW_PARENT) {
-                c.z = mob_ptr->parent->m->z;
-            } else if(method == LIMB_DRAW_ABOVE_PARENT) {
-                c.z =
-                    mob_ptr->parent->m->z +
-                    mob_ptr->parent->m->height +
-                    0.001;
-            } else if(method == LIMB_DRAW_ABOVE_CHILD) {
-                c.z = mob_ptr->z + mob_ptr->height + 0.001;
-            } else if(method == LIMB_DRAW_ABOVE_BOTH) {
-                c.z =
-                    max(
-                        mob_ptr->parent->m->z +
-                        mob_ptr->parent->m->height +
-                        0.001,
-                        mob_ptr->z + mob_ptr->height + 0.001
-                    );
-            }
-            
-            components.push_back(c);
-        }
-        
-        //The mob proper.
-        world_component c;
-        c.mob_ptr = mob_ptr;
-        if(mob_ptr->holder.m && mob_ptr->holder.above_holder) {
-            c.z = mob_ptr->holder.m->z + mob_ptr->holder.m->height + 0.01;
-        } else {
-            c.z = mob_ptr->z + mob_ptr->height;
-        }
-        components.push_back(c);
-        
-    }
-    
+	for (size_t s = 0; s < cur_area_data.sectors.size(); ++s) {
+		sector* s_ptr = cur_area_data.sectors[s];
+
+			if (
+				!rectangles_intersect(
+					s_ptr->bbox[0], s_ptr->bbox[1],
+					cam_box[pnum][0], cam_box[pnum][1]
+				)
+				) {
+				//Off-camera.
+				continue;
+			}
+
+			world_component c;
+			c.sector_ptr = s_ptr;
+			c.z = s_ptr->z;
+			components.push_back(c);
+		}
+
+		//Particles.
+		particles.fill_component_list(components, cam_box[pnum][0], cam_box[pnum][1]);
+
+		//Mobs.
+		for (size_t m = 0; m < mobs.size(); ++m) {
+			mob* mob_ptr = mobs[m];
+
+			if (mob_ptr->is_off_camera()) {
+				//Off-camera.
+				continue;
+			}
+
+			if (mob_ptr->hide) continue;
+
+			//Shadows.
+			if (mob_ptr->type->casts_shadow) {
+				world_component c;
+				c.mob_shadow_ptr = mob_ptr;
+				if (mob_ptr->standing_on_mob) {
+					c.z =
+						mob_ptr->standing_on_mob->z +
+						mob_ptr->standing_on_mob->height;
+				}
+				else {
+					c.z = mob_ptr->ground_sector->z;
+				}
+				components.push_back(c);
+			}
+
+			//Limbs.
+			if (mob_ptr->parent && mob_ptr->parent->limb_anim.anim_db) {
+				unsigned char method = mob_ptr->parent->limb_draw_method;
+				world_component c;
+				c.mob_limb_ptr = mob_ptr;
+
+				if (method == LIMB_DRAW_BELOW_BOTH) {
+					c.z = min(mob_ptr->z, mob_ptr->parent->m->z);
+				}
+				else if (method == LIMB_DRAW_BELOW_CHILD) {
+					c.z = mob_ptr->z;
+				}
+				else if (method == LIMB_DRAW_BELOW_PARENT) {
+					c.z = mob_ptr->parent->m->z;
+				}
+				else if (method == LIMB_DRAW_ABOVE_PARENT) {
+					c.z =
+						mob_ptr->parent->m->z +
+						mob_ptr->parent->m->height +
+						0.001;
+				}
+				else if (method == LIMB_DRAW_ABOVE_CHILD) {
+					c.z = mob_ptr->z + mob_ptr->height + 0.001;
+				}
+				else if (method == LIMB_DRAW_ABOVE_BOTH) {
+					c.z =
+						max(
+							mob_ptr->parent->m->z +
+							mob_ptr->parent->m->height +
+							0.001,
+							mob_ptr->z + mob_ptr->height + 0.001
+						);
+				}
+
+				components.push_back(c);
+			}
+
+			//The mob proper.
+			world_component c;
+			c.mob_ptr = mob_ptr;
+			if (mob_ptr->holder.m && mob_ptr->holder.above_holder) {
+				c.z = mob_ptr->holder.m->z + mob_ptr->holder.m->height + 0.01;
+			}
+			else {
+				c.z = mob_ptr->z + mob_ptr->height;
+			}
+			components.push_back(c);
+
+		}
     //Time to draw!
     for(size_t c = 0; c < components.size(); ++c) {
         components[c].nr = c;
@@ -1586,11 +2055,9 @@ void draw_control(
     if(c.type == CONTROL_TYPE_KEYBOARD_KEY) {
         name = str_to_upper(al_keycode_to_name(c.button));
     } else if(
-        c.type == CONTROL_TYPE_JOYSTICK_AXIS_NEG ||
-        c.type == CONTROL_TYPE_JOYSTICK_AXIS_POS
+        c.type == CONTROL_TYPE_JOYSTICK_AXIS
     ) {
         name = "AXIS " + i2s(c.stick) + " " + i2s(c.axis);
-        name += c.type == CONTROL_TYPE_JOYSTICK_AXIS_NEG ? "-" : "+";
     } else if(c.type == CONTROL_TYPE_JOYSTICK_BUTTON) {
         name = i2s(c.button + 1);
     } else if(c.type == CONTROL_TYPE_MOUSE_BUTTON) {
@@ -1679,7 +2146,56 @@ void draw_bitmap(
         0
     );
 }
+void draw_bitmap_with_color(
+	ALLEGRO_BITMAP* bmp, const point &center,
+	const point &size, const float angle, const ALLEGRO_COLOR &tint
+) {
 
+	if (size.x == 0 && size.y == 0) return;
+
+	if (!bmp) {
+		bmp = bmp_error;
+	}
+
+	point bmp_size(al_get_bitmap_width(bmp), al_get_bitmap_height(bmp));
+	point scale = size / bmp_size;
+
+	int old_op, old_src, old_dst, old_aop, old_asrc, old_adst;
+	al_get_separate_blender(
+		&old_op, &old_src, &old_dst, &old_aop, &old_asrc, &old_adst
+	);
+	
+	al_set_blend_color(tint);
+
+	al_draw_tinted_scaled_rotated_bitmap(
+		bmp,
+		tint,
+		bmp_size.x / 2, bmp_size.y / 2,
+		center.x, center.y,
+		(size.x == -1) ? scale.y : scale.x,
+		(size.y == -1) ? scale.x : scale.y,
+		angle,
+		0
+	);
+	al_set_separate_blender(
+		old_op, old_src, old_dst, old_aop, old_asrc, old_adst
+	);
+}
+void draw_bitmap_with_color_in_box(
+	ALLEGRO_BITMAP* bmp, const point &center,
+	const point &box_size, const float angle, const ALLEGRO_COLOR &tint
+) {
+	if (box_size.x == 0 || box_size.y == 0) return;
+	float w_diff = al_get_bitmap_width(bmp) / box_size.x;
+	float h_diff = al_get_bitmap_height(bmp) / box_size.y;
+
+	if (w_diff > h_diff) {
+		draw_bitmap_with_color(bmp, center, point(box_size.x, -1), angle, tint);
+	}
+	else {
+		draw_bitmap_with_color(bmp, center, point(-1, box_size.y), angle, tint);
+	}
+}
 
 /* ----------------------------------------------------------------------------
  * Draws a bitmap, but keeps its aspect ratio,
@@ -2046,7 +2562,86 @@ void draw_liquid(
     
     delete[] av;
 }
+void endo::do_nightime_drawing(){
+	area_title_fade_timer.get_ratio_left();
+	if (!paused && area_title_fade_timer.time_left <= 0) {
+		unsigned char blackness_alpha = 255.0f * max(0.0f, 1.0f * 4 - 3);
+		al_draw_filled_rectangle(
+			0, 0, scr_w, scr_h, al_map_rgba(0, 0, 0, blackness_alpha)
+		);
+		string text = scorer;
+		int text_w = 0, text_h = 0;
+		if (!text.empty()) {
+			if (!loading_text_bmp) {
+				//No main text buffer? Create it!
 
+				get_multiline_text_dimensions(
+					font_area_name, text, &text_w, &text_h
+				);
+				loading_text_bmp = al_create_bitmap(text_w, text_h);
+
+				//Draw the main text on its bitmap.
+				al_set_target_bitmap(loading_text_bmp); {
+					al_clear_to_color(al_map_rgba(0, 0, 0, 0));
+					draw_text_lines(
+						font_area_name, al_map_rgb(255, 215, 0),
+						point(), ALLEGRO_ALIGN_LEFT, 0,
+						text
+					);
+				} al_set_target_backbuffer(display);
+
+			}
+			else {
+				text_w = al_get_bitmap_width(loading_text_bmp);
+				text_h = al_get_bitmap_height(loading_text_bmp);
+			}
+
+		}
+		draw_compressed_text(font_area_name, al_map_rgb(255, 215, 0), point(scr_w * 0.0, scr_h * 0.5), 0, ALLEGRO_ALIGN_CENTER, point(scr_w * 0.5, scr_h * 0.25), text);
+
+
+	}
+	if (area_title_fade_timer.time_left > 0) {
+		size_t errors_reported_at_start = errors_reported_today;
+		unsigned char blackness_alpha = 255.0f * max(0.0f, 1.0f * 4 - 3);
+		al_draw_filled_rectangle(
+			0, 0, scr_w, scr_h, al_map_rgba(0, 0, 0, blackness_alpha)
+		);
+		string text = scorer;
+		int text_w = 0, text_h = 0;
+		if (!text.empty()) {
+			if (!loading_text_bmp) {
+				//No main text buffer? Create it!
+
+				get_multiline_text_dimensions(
+					font_area_name, text, &text_w, &text_h
+				);
+				loading_text_bmp = al_create_bitmap(text_w, text_h);
+
+				//Draw the main text on its bitmap.
+				al_set_target_bitmap(loading_text_bmp); {
+					al_clear_to_color(al_map_rgba(0, 0, 0, 0));
+					draw_text_lines(
+						font_area_name, al_map_rgb(255, 215, 0),
+						point(), ALLEGRO_ALIGN_LEFT, 0,
+						text
+					);
+				} al_set_target_backbuffer(display);
+
+			}
+			else {
+				text_w = al_get_bitmap_width(loading_text_bmp);
+				text_h = al_get_bitmap_height(loading_text_bmp);
+			}
+
+		}
+		draw_compressed_text(font_area_name, al_map_rgb(255, 215, 0), point(scr_w * 0.0, scr_h * 0.5), 0, ALLEGRO_ALIGN_CENTER, point(scr_w * 0.5, scr_h * 0.25), text);
+
+
+	}
+	fade_mgr.draw();
+	al_flip_display();
+}
 
 
 /* ----------------------------------------------------------------------------

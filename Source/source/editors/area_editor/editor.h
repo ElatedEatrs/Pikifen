@@ -95,6 +95,7 @@ private:
     
     enum AREA_EDITOR_PICKER_TYPES {
         PICKER_LOAD_AREA,
+        PICKER_LOAD_DAY,
         PICKER_SET_WEATHER,
         PICKER_SET_SECTOR_TYPE,
         PICKER_ADD_SECTOR_HAZARD,
@@ -260,6 +261,7 @@ private:
     signed char moving_cross_section_point;
     //New circle sector's second point.
     point new_circle_sector_anchor;
+	string cur_day;
     //New circle sector's center.
     point new_circle_sector_center;
     //Points where the new circle sector's vertexes will end up.
@@ -322,7 +324,6 @@ private:
     set<mob_gen*> selected_mobs;
     //Currently selected path links.
     set<pair<path_stop*, path_stop*> > selected_path_links;
-	int linkid;
     //Currently selected path stops.
     set<path_stop*> selected_path_stops;
     //Currently selected sectors.
@@ -455,6 +456,8 @@ private:
     void handle_line_error();
     void homogenize_selected_mobs();
     void homogenize_selected_sectors();
+	void load_day(const string name, const bool from_backup);
+	void save_day(const bool from_backup);
     void load_area(const bool from_backup);
     void load_backup();
     void load_reference();

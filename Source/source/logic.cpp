@@ -20,6 +20,7 @@
 #include "vars.h"
 
 const float CAMERA_SMOOTHNESS_MULT = 4.5f;
+const float CAMERA_BOX_MARGIN = 128.0f;
 
 /* ----------------------------------------------------------------------------
  * Ticks the logic of aesthetic things. If the game is paused, these can
@@ -34,65 +35,11 @@ void gameplay::do_aesthetic_logic() {
     **************************************/
     
     //"Move group" arrows.
-    if(group_move_magnitude) {
+    if(group_move_magnitude[pnum]) {
         group_move_next_arrow_timer.tick(delta_t);
     }
     
-    dist leader_to_cursor_dist(cur_leader_ptr->pos, leader_cursor_w);
-    for(size_t a = 0; a < group_move_arrows.size(); ) {
-        group_move_arrows[a] += GROUP_MOVE_ARROW_SPEED * delta_t;
-        
-        dist max_dist =
-            (group_move_magnitude > 0) ?
-            cursor_max_dist * group_move_magnitude :
-            leader_to_cursor_dist;
-            
-        if(max_dist < group_move_arrows[a]) {
-            group_move_arrows.erase(group_move_arrows.begin() + a);
-        } else {
-            a++;
-        }
-    }
-    
-    whistle_fade_timer.tick(delta_t);
-    
-    if(whistling) {
-        //Create rings.
-        whistle_next_ring_timer.tick(delta_t);
-        
-        if(pretty_whistle) {
-            whistle_next_dot_timer.tick(delta_t);
-        }
-        
-        for(unsigned char d = 0; d < 6; ++d) {
-            if(whistle_dot_radius[d] == -1) continue;
-            
-            whistle_dot_radius[d] += whistle_growth_speed * delta_t;
-            if(
-                whistle_radius > 0 &&
-                whistle_dot_radius[d] > cur_leader_ptr->lea_type->whistle_range
-            ) {
-                whistle_dot_radius[d] = cur_leader_ptr->lea_type->whistle_range;
-                
-            } else if(
-                whistle_fade_radius > 0 &&
-                whistle_dot_radius[d] > whistle_fade_radius
-            ) {
-                whistle_dot_radius[d] = whistle_fade_radius;
-            }
-        }
-    }
-    
-    for(size_t r = 0; r < whistle_rings.size(); ) {
-        //Erase rings that go beyond the cursor.
-        whistle_rings[r] += WHISTLE_RING_SPEED * delta_t;
-        if(leader_to_cursor_dist < whistle_rings[r]) {
-            whistle_rings.erase(whistle_rings.begin() + r);
-            whistle_ring_colors.erase(whistle_ring_colors.begin() + r);
-        } else {
-            r++;
-        }
-    }
+
     
     //Ship beam ring.
     //The way this works is that the three color components are saved.
@@ -115,79 +62,7 @@ void gameplay::do_aesthetic_logic() {
         }
     }
     
-    //Cursor spin angle and invalidness effect.
-    cursor_invalid_effect += CURSOR_INVALID_EFFECT_SPEED * delta_t;
     
-    //Cursor trail.
-    if(draw_cursor_trail) {
-        cursor_save_timer.tick(delta_t);
-    }
-    
-    //Where the cursor is.
-    //TODO check this only one out of every three frames or something.
-    cursor_height_diff_light = 0;
-    
-    leader_cursor_mob = NULL;
-    for(size_t m = 0; m < mobs.size(); ++m) {
-        mob* m_ptr = mobs[m];
-        if(!bbox_check(leader_cursor_w, m_ptr->pos, m_ptr->type->max_span)) {
-            //Too far away; of course the cursor isn't on it.
-            continue;
-        }
-        if(
-            leader_cursor_mob &&
-            m_ptr->z + m_ptr->height <
-            leader_cursor_mob->z + leader_cursor_mob->height
-        ) {
-            //If this mob is lower than the previous known "under cursor" mob,
-            //then forget it.
-            continue;
-        }
-        if(dist(leader_cursor_w, m_ptr->pos) > m_ptr->type->radius) {
-            //The cursor is not really on top of this mob.
-            continue;
-        }
-        leader_cursor_mob = m_ptr;
-    }
-    
-    leader_cursor_sector =
-        get_sector(leader_cursor_w, NULL, true);
-        
-    if(leader_cursor_sector) {
-        cursor_height_diff_light =
-            (leader_cursor_sector->z - cur_leader_ptr->z) * 0.0033;
-        cursor_height_diff_light =
-            clamp(cursor_height_diff_light, -0.33f, 0.33f);
-    }
-    
-    //Whether the held Pikmin can reach the cursor.
-    throw_can_reach_cursor = true;
-    if(!cur_leader_ptr->holding.empty()) {
-        mob* held_mob = cur_leader_ptr->holding[0];
-        
-        if(
-            !leader_cursor_sector ||
-            leader_cursor_sector->type == SECTOR_TYPE_BLOCKING
-        ) {
-            throw_can_reach_cursor = false;
-            
-        } else {
-            float max_throw_z = 0;
-            size_t cat = held_mob->type->category->id;
-            if(cat == MOB_CATEGORY_PIKMIN) {
-                max_throw_z =
-                    ((pikmin*) held_mob)->pik_type->max_throw_height;
-            } else if(cat == MOB_CATEGORY_LEADERS) {
-                max_throw_z =
-                    ((leader*) held_mob)->lea_type->max_throw_height;
-            }
-            
-            if(max_throw_z > 0) {
-                throw_can_reach_cursor =
-                    leader_cursor_sector->z < cur_leader_ptr->z + max_throw_z;
-            }
-        }
-    }
     
     
     //Specific animations.
@@ -203,605 +78,766 @@ void gameplay::do_aesthetic_logic() {
 }
 
 
-const float CAMERA_BOX_MARGIN = 128.0f;
 
+void gameplay::do_leader_logic() {
+	/********************
+*              ***  *
+*   Whistle   * O * *
+*              ***  *
+********************/
+
+	if (
+		cur_leader_ptrs[pnum]->whistling &&
+		whistle_radius[pnum] < cur_leader_ptrs[pnum]->lea_type->whistle_range
+		) {
+		whistle_radius[pnum] += whistle_growth_speed * delta_t;
+		if (whistle_radius[pnum] > cur_leader_ptrs[pnum]->lea_type->whistle_range) {
+			whistle_radius[pnum] = cur_leader_ptrs[pnum]->lea_type->whistle_range;
+		}
+	}
+
+	/*******************
+*             .-.  *
+*   Leader   (*:O) *
+*             `-´  *
+*******************/
+//TODO move this logic to the leader class once
+//multiplayer logic is implemented.
+
+//Current leader movement.
+	point dummy_coords;
+	float dummy_angle;
+	float leader_move_magnitude;
+	leader_movement[pnum].get_clean_info(
+		&dummy_coords, &dummy_angle, &leader_move_magnitude
+	);
+	if (leader_move_magnitude < 0.10) {
+		cur_leader_ptrs[pnum]->fsm.run_event(
+			LEADER_EVENT_MOVE_END, (void*)&leader_movement[pnum]
+		);
+	}
+	else {
+		cur_leader_ptrs[pnum]->fsm.run_event(
+			LEADER_EVENT_MOVE_START, (void*)&leader_movement[pnum]
+		);
+	}
+
+	cam_final_pos[pnum] = cur_leader_ptrs[pnum]->pos;
+
+	//Check proximity with certain key things.
+	if (!cur_leader_ptrs[pnum]->auto_plucking) {
+		dist closest_d = 0;
+		dist d = 0;
+		bool done = false;
+		close_to_ship_to_heal[pnum] = nullptr;
+		for (size_t s = 0; s < ships.size(); ++s) {
+			ship* s_ptr = ships[s];
+			d = dist(cur_leader_ptrs[pnum]->pos, s_ptr->pos);
+			if (!s_ptr->is_leader_under_ring(cur_leader_ptrs[pnum])) {
+				continue;
+			}
+			if (cur_leader_ptrs[pnum]->health == cur_leader_ptrs[pnum]->type->max_health) {
+				continue;
+			}
+			if (!s_ptr->shi_type->can_heal) {
+				continue;
+			}
+			if (d < closest_d || !close_to_ship_to_heal[pnum]) {
+				close_to_ship_to_heal[pnum] = s_ptr;
+				closest_d = d;
+				done = true;
+			}
+		}
+
+		closest_d = 0;
+		d = 0;
+		close_to_pikmin_to_pluck[pnum] = nullptr;
+		if (!done) {
+			pikmin* p = get_closest_sprout(cur_leader_ptrs[pnum]->pos, &d, false);
+			if (p && d <= pluck_range) {
+				close_to_pikmin_to_pluck[pnum] = p;
+				done = true;
+			}
+		}
+
+		closest_d = 0;
+		d = 0;
+		close_to_onion_to_open[pnum] = nullptr;
+		if (!done) {
+			for (size_t o = 0; o < onions.size(); ++o) {
+				d = dist(cur_leader_ptrs[pnum]->pos, onions[o]->pos);
+				if (d > onion_open_range) continue;
+				if (d < closest_d || !close_to_onion_to_open[pnum]) {
+					close_to_onion_to_open[pnum] = onions[o];
+					closest_d = d;
+					done = true;
+				}
+			}
+		}
+
+		closest_d = 0;
+		d = 0;
+		close_to_interactable_to_use[pnum] = nullptr;
+		if (!done) {
+			for (size_t i = 0; i < interactables.size(); ++i) {
+				d = dist(cur_leader_ptrs[pnum]->pos, interactables[i]->pos);
+				if (d > interactables[i]->int_type->trigger_range) continue;
+				if (d < closest_d || !close_to_interactable_to_use[pnum]) {
+					close_to_interactable_to_use[pnum] = interactables[i];
+					closest_d = d;
+					done = true;
+				}
+			}
+		}
+	}
+
+	/***********************************
+	*                             ***  *
+	*   Current leader's group   ****O *
+	*                             ***  *
+	************************************/
+
+	size_t n_members = cur_leader_ptrs[pnum]->group->members.size();
+
+	closest_group_member[pnum] = nullptr;
+	if (!cur_leader_ptrs[pnum]->holding.empty()) {
+		closest_group_member[pnum] = cur_leader_ptrs[pnum]->holding[0];
+	}
+
+	closest_group_member_distant[pnum] = false;
+
+
+
+
+
+	if (n_members > 0 && !closest_group_member[pnum]) {
+
+		cur_leader_ptrs[pnum]->update_closest_group_member();
+	}
+
+	float old_group_move_magnitude = group_move_magnitude[pnum];
+	point group_move_coords;
+	float new_group_move_angle;
+	group_movement[pnum].get_clean_info(
+		&group_move_coords, &new_group_move_angle, &group_move_magnitude[pnum]
+	);
+	if (group_move_magnitude[pnum] > 0) {
+		//This stops arrows that were fading away to the left from
+		//turning to angle 0 because the magnitude reached 0.
+		group_move_angle = new_group_move_angle;
+	}
+
+	if (group_move_cursor[pnum]) {
+		group_move_angle = cursor_angle[pnum];
+		float leader_to_cursor_dist =
+			dist(cur_leader_ptrs[pnum]->pos, leader_cursor_ws[pnum]).to_float();
+		group_move_magnitude[pnum] =
+			leader_to_cursor_dist / cursor_max_dist;
+	}
+
+	if (old_group_move_magnitude != group_move_magnitude[pnum]) {
+		if (group_move_magnitude[pnum] != 0) {
+			cur_leader_ptrs[pnum]->signal_group_move_start();
+		}
+		else {
+			cur_leader_ptrs[pnum]->signal_group_move_end();
+		}
+	}
+
+
+	/********************
+	*             .-.   *
+	*   Cursor   ( = )> *
+	*             `-´   *
+	********************/
+
+	point mouse_cursor_speed;
+	float dummy_magnitude;
+	if (mouse_moves_cursor[pnum] == true) {
+		cursor_movement[pnum].get_clean_info(
+			&mouse_cursor_speed, &dummy_angle, &dummy_magnitude
+		);
+		mouse_cursor_speed =
+			mouse_cursor_speed * delta_t* MOUSE_CURSOR_MOVE_SPEED;
+
+		mouse_cursor_s[pnum] += mouse_cursor_speed;
+
+		mouse_cursor_w[pnum] = mouse_cursor_s[pnum];
+		al_transform_coordinates(
+			&screen_to_world_transform[pnum],
+			&mouse_cursor_w[pnum].x, &mouse_cursor_w[pnum].y
+		);
+	}
+	if (mouse_moves_cursor[pnum] == true) {
+		leader_cursor_ws[pnum] = mouse_cursor_w[pnum];
+	}
+	cursor_angle[pnum] =
+		get_angle(cur_leader_ptrs[pnum]->pos, leader_cursor_ws[pnum]);
+	dist leader_to_cursor_dist = dist(cur_leader_ptrs[pnum]->pos, leader_cursor_ws[pnum]);
+
+	if (leader_to_cursor_dist > cursor_max_dist) {
+		//TODO with an analog stick, if the cursor is being moved,
+		//it's considered off-limit a lot more than it should.
+
+		//Cursor goes beyond the range limit.
+		leader_cursor_ws[pnum].x =
+			cur_leader_ptrs[pnum]->pos.x + (cos(cursor_angle[pnum]) * cursor_max_dist);
+		leader_cursor_ws[pnum].y =
+			cur_leader_ptrs[pnum]->pos.y + (sin(cursor_angle[pnum]) * cursor_max_dist);
+
+		if (mouse_cursor_speed.x != 0 || mouse_cursor_speed.y != 0) {
+			//If we're speeding the mouse cursor (via analog stick),
+			//don't let it go beyond the edges.
+			mouse_cursor_w[pnum] = leader_cursor_ws[pnum];
+			mouse_cursor_s[pnum] = mouse_cursor_w[pnum];
+			al_transform_coordinates(
+				&world_to_screen_transform[pnum],
+				&mouse_cursor_s[pnum].x, &mouse_cursor_s[pnum].y
+			);
+		}
+	}
+
+	leader_cursor_ss[pnum] = leader_cursor_ws[pnum];
+	al_transform_coordinates(
+		&world_to_screen_transform[pnum],
+		&leader_cursor_ss[pnum].x, &leader_cursor_ss[pnum].y
+	);
+	for (size_t a = 0; a < group_move_arrows[pnum].size(); ) {
+		group_move_arrows[pnum][a] += GROUP_MOVE_ARROW_SPEED * delta_t;
+
+		dist max_dist =
+			(group_move_magnitude[pnum] > 0) ?
+			cursor_max_dist * group_move_magnitude[pnum] :
+			leader_to_cursor_dist;
+
+		if (max_dist < group_move_arrows[pnum][a]) {
+			group_move_arrows[pnum].erase(group_move_arrows[pnum].begin() + a);
+		}
+		else {
+			a++;
+		}
+	}
+
+	cur_leader_ptrs[pnum]->whistle_fade_timer.tick(delta_t);
+
+	if (cur_leader_ptrs[pnum]->whistling == true) {
+		//Create rings.
+		whistle_next_ring_timer[pnum].tick(delta_t);
+
+		if (pretty_whistle) {
+			whistle_next_dot_timer[pnum].tick(delta_t);
+		}
+
+		for (unsigned char d = 0; d < 6; ++d) {
+			if (whistle_dot_radius[pnum][d] == -1) continue;
+
+			whistle_dot_radius[pnum][d] += whistle_growth_speed * delta_t;
+			if (
+				whistle_radius[pnum] > 0 &&
+				whistle_dot_radius[pnum][d] > cur_leader_ptrs[pnum]->lea_type->whistle_range
+				) {
+				whistle_dot_radius[pnum][d] = cur_leader_ptrs[pnum]->lea_type->whistle_range;
+
+			}
+			else if (
+				cur_leader_ptrs[pnum]->whistle_fade_radius > 0 &&
+				whistle_dot_radius[pnum][d] > cur_leader_ptrs[pnum]->whistle_fade_radius
+				) {
+				whistle_dot_radius[pnum][d] = cur_leader_ptrs[pnum]->whistle_fade_radius;
+			}
+		}
+	}
+
+	for (size_t r = 0; r < whistle_rings[pnum].size(); ) {
+		//Erase rings that go beyond the cursor.
+		whistle_rings[pnum][r] += WHISTLE_RING_SPEED * delta_t;
+		if (leader_to_cursor_dist < whistle_rings[pnum][r]) {
+			whistle_rings[pnum].erase(whistle_rings[pnum].begin() + r);
+			whistle_ring_colors[pnum].erase(whistle_ring_colors[pnum].begin() + r);
+		}
+		else {
+			r++;
+		}
+	}
+	//Cursor spin angle and invalidness effect.
+	cursor_invalid_effect += CURSOR_INVALID_EFFECT_SPEED * delta_t;
+
+	//Cursor trail.
+	if (draw_cursor_trail) {
+		cursor_save_timer.tick(delta_t);
+	}
+
+	//Where the cursor is.
+	//TODO check this only one out of every three frames or something.
+	cursor_height_diff_light = 0;
+		leader_cursor_mobs[pnum] = nullptr;
+
+
+	for (size_t m = 0; m < mobs.size(); ++m) {
+		mob* m_ptr = mobs[m];
+		if (!bbox_check(leader_cursor_ws[pnum], m_ptr->pos, m_ptr->type->max_span)) {
+			//Too far away; of course the cursor isn't on it.
+			continue;
+		}
+		if (
+			leader_cursor_mobs[pnum] &&
+			m_ptr->z + m_ptr->height <
+			leader_cursor_mobs[pnum]->z + leader_cursor_mobs[pnum]->height
+			) {
+			//If this mob is lower than the previous known "under cursor" mob,
+			//then forget it.
+			continue;
+		}
+		if (dist(leader_cursor_ws[pnum], m_ptr->pos) > m_ptr->type->radius) {
+			//The cursor is not really on top of this mob.
+			continue;
+		}
+		leader_cursor_mobs[pnum] = m_ptr;
+	}
+		leader_cursor_sectors[pnum] =
+			get_sector(leader_cursor_ws[pnum], NULL, true);
+
+	if (leader_cursor_sectors[pnum]) {
+		cursor_height_diff_light =
+			(leader_cursor_sectors[pnum]->z - cur_leader_ptrs[pnum]->z) * 0.0033;
+		cursor_height_diff_light =
+			clamp(cursor_height_diff_light, -0.33f, 0.33f);
+	}
+
+	//Whether the held Pikmin can reach the cursor.
+	throw_can_reach_cursor = true;
+	if (!cur_leader_ptrs[pnum]->holding.empty()) {
+		mob* held_mob = cur_leader_ptrs[pnum]->holding[0];
+
+		if (
+			!leader_cursor_sectors[pnum] ||
+			leader_cursor_sectors[pnum]->type == SECTOR_TYPE_BLOCKING
+			) {
+			throw_can_reach_cursor = false;
+
+		}
+		else {
+			float max_throw_z = 0;
+			size_t cat = held_mob->type->category->id;
+			if (cat == MOB_CATEGORY_PIKMIN) {
+				max_throw_z =
+					((pikmin*)held_mob)->pik_type->max_throw_height;
+			}
+			else if (cat == MOB_CATEGORY_LEADERS) {
+				max_throw_z =
+					((leader*)held_mob)->lea_type->max_throw_height;
+			}
+
+			if (max_throw_z > 0) {
+				throw_can_reach_cursor =
+					leader_cursor_sectors[pnum]->z < cur_leader_ptrs[pnum]->z + max_throw_z;
+			}
+		}
+	}
+	//Camera movement.
+	cam_pos[pnum].x +=
+		(cam_final_pos[pnum].x - cam_pos[pnum].x) * (CAMERA_SMOOTHNESS_MULT * delta_t);
+	cam_pos[pnum].y +=
+		(cam_final_pos[pnum].y - cam_pos[pnum].y) * (CAMERA_SMOOTHNESS_MULT * delta_t);
+	cam_zoom +=
+		(cam_final_zoom - cam_zoom) * (CAMERA_SMOOTHNESS_MULT * delta_t);
+
+	game_states[cur_game_state_nr]->update_transformations();
+
+	//Set the camera bounding box.
+	cam_box[pnum][0] = point(0, 0);
+	cam_box[pnum][1] = point(scr_w, scr_h);
+	al_transform_coordinates(
+		&screen_to_world_transform[pnum],
+		&cam_box[pnum][0].x,
+		&cam_box[pnum][0].y
+	);
+	al_transform_coordinates(
+		&screen_to_world_transform[pnum],
+		&cam_box[pnum][1].x,
+		&cam_box[pnum][1].y
+	);
+	cam_box[pnum][0].x -= CAMERA_BOX_MARGIN;
+	cam_box[pnum][0].y -= CAMERA_BOX_MARGIN;
+	cam_box[pnum][1].x += CAMERA_BOX_MARGIN;
+	cam_box[pnum][1].y += CAMERA_BOX_MARGIN;
+
+}
 /* ----------------------------------------------------------------------------
  * Ticks the logic of gameplay-related things.
  */
 void gameplay::do_gameplay_logic() {
 
-    //Camera movement.
-    cam_pos.x +=
-        (cam_final_pos.x - cam_pos.x) * (CAMERA_SMOOTHNESS_MULT * delta_t);
-    cam_pos.y +=
-        (cam_final_pos.y - cam_pos.y) * (CAMERA_SMOOTHNESS_MULT * delta_t);
-    cam_zoom +=
-        (cam_final_zoom - cam_zoom) * (CAMERA_SMOOTHNESS_MULT * delta_t);
-        
-    game_states[cur_game_state_nr]->update_transformations();
-    
-    //Set the camera bounding box.
-    cam_box[0] = point(0, 0);
-    cam_box[1] = point(scr_w, scr_h);
-    al_transform_coordinates(
-        &screen_to_world_transform,
-        &cam_box[0].x,
-        &cam_box[0].y
-    );
-    al_transform_coordinates(
-        &screen_to_world_transform,
-        &cam_box[1].x,
-        &cam_box[1].y
-    );
-    cam_box[0].x -= CAMERA_BOX_MARGIN;
-    cam_box[0].y -= CAMERA_BOX_MARGIN;
-    cam_box[1].x += CAMERA_BOX_MARGIN;
-    cam_box[1].y += CAMERA_BOX_MARGIN;
-    
-    if(cur_message.empty()) {
-    
-        /************************************
-        *                              .-.  *
-        *   Timer things - gameplay   ( L ) *
-        *                              `-´  *
-        *************************************/
-        
-        day_minutes += (day_minutes_per_irl_sec * delta_t);
-        if(day_minutes > 60 * 24) day_minutes -= 60 * 24;
-        
-        area_time_passed += delta_t;
-        
-        //Tick all particles.
-        particles.tick_all(delta_t);
-        
-        //Ticks all status effect animations.
-        for(auto s = status_types.begin(); s != status_types.end(); ++s) {
-            s->second.anim_instance.tick(delta_t);
-        }
-        
-        
-        /*******************
-        *             +--+ *
-        *   Sectors   |  | *
-        *             +--+ *
-        ********************/
-        for(size_t s = 0; s < cur_area_data.sectors.size(); ++s) {
-            sector* s_ptr = cur_area_data.sectors[s];
-            
-            if(s_ptr->draining_liquid) {
-            
-                s_ptr->liquid_drain_left -= delta_t;
-                
-                if(s_ptr->liquid_drain_left <= 0) {
-                
-                    for(size_t h = 0; h < s_ptr->hazards.size();) {
-                        if(s_ptr->hazards[h]->associated_liquid) {
-                            s_ptr->hazards.erase(s_ptr->hazards.begin() + h);
-                        } else {
-                            ++h;
-                        }
-                    }
-                    
-                    s_ptr->liquid_drain_left = 0;
-                    s_ptr->draining_liquid = false;
-                }
-            }
-        }
-        
-        
-        /********************
-        *              ***  *
-        *   Whistle   * O * *
-        *              ***  *
-        ********************/
-        
-        if(
-            whistling &&
-            whistle_radius < cur_leader_ptr->lea_type->whistle_range
-        ) {
-            whistle_radius += whistle_growth_speed * delta_t;
-            if(whistle_radius > cur_leader_ptr->lea_type->whistle_range) {
-                whistle_radius = cur_leader_ptr->lea_type->whistle_range;
-            }
-        }
-        
-        
-        /*****************
-        *                *
-        *   Mobs   ()--> *
-        *                *
-        ******************/
-        
-        size_t n_mobs = mobs.size();
-        for(size_t m = 0; m < n_mobs; ++m) {
-            //Tick the mob.
-            mob* m_ptr = mobs[m];
-            m_ptr->tick();
-            
-            if(m_ptr->fsm.cur_state) {
-                process_mob_interactions(m_ptr, m);
-            }
-        }
-        
-        for(size_t m = 0; m < n_mobs;) {
-            //Mob deletion.
-            mob* m_ptr = mobs[m];
-            if(m_ptr->to_delete) {
-                delete_mob(m_ptr);
-                n_mobs--;
-                continue;
-            }
-            m++;
-        }
-        
-        
-        /*******************
-        *             .-.  *
-        *   Leader   (*:O) *
-        *             `-´  *
-        *******************/
-        //TODO move this logic to the leader class once
-        //multiplayer logic is implemented.
-        
-        //Current leader movement.
-        point dummy_coords;
-        float dummy_angle;
-        float leader_move_magnitude;
-        leader_movement.get_clean_info(
-            &dummy_coords, &dummy_angle, &leader_move_magnitude
-        );
-        if(leader_move_magnitude < 0.75) {
-            cur_leader_ptr->fsm.run_event(
-                LEADER_EVENT_MOVE_END, (void*) &leader_movement
-            );
-        } else {
-            cur_leader_ptr->fsm.run_event(
-                LEADER_EVENT_MOVE_START, (void*) &leader_movement
-            );
-        }
-        
-        cam_final_pos = cur_leader_ptr->pos;
-        
-        //Check proximity with certain key things.
-        if(!cur_leader_ptr->auto_plucking) {
-            dist closest_d = 0;
-            dist d = 0;
-            bool done = false;
-            
-            close_to_ship_to_heal = NULL;
-            for(size_t s = 0; s < ships.size(); ++s) {
-                ship* s_ptr = ships[s];
-                d = dist(cur_leader_ptr->pos, s_ptr->pos);
-                if(!s_ptr->is_leader_under_ring(cur_leader_ptr)) {
-                    continue;
-                }
-                if(cur_leader_ptr->health == cur_leader_ptr->type->max_health) {
-                    continue;
-                }
-                if(!s_ptr->shi_type->can_heal) {
-                    continue;
-                }
-                if(d < closest_d || !close_to_ship_to_heal) {
-                    close_to_ship_to_heal = s_ptr;
-                    closest_d = d;
-                    done = true;
-                }
-            }
-            
-            closest_d = 0;
-            d = 0;
-            close_to_pikmin_to_pluck = NULL;
-            if(!done) {
-                pikmin* p = get_closest_sprout(cur_leader_ptr->pos, &d, false);
-                if(p && d <= pluck_range) {
-                    close_to_pikmin_to_pluck = p;
-                    done = true;
-                }
-            }
-            
-            closest_d = 0;
-            d = 0;
-            close_to_onion_to_open = NULL;
-            if(!done) {
-                for(size_t o = 0; o < onions.size(); ++o) {
-                    d = dist(cur_leader_ptr->pos, onions[o]->pos);
-                    if(d > onion_open_range) continue;
-                    if(d < closest_d || !close_to_onion_to_open) {
-                        close_to_onion_to_open = onions[o];
-                        closest_d = d;
-                        done = true;
-                    }
-                }
-            }
-            
-            closest_d = 0;
-            d = 0;
-            close_to_interactable_to_use = NULL;
-            if(!done) {
-                for(size_t i = 0; i < interactables.size(); ++i) {
-                    d = dist(cur_leader_ptr->pos, interactables[i]->pos);
-                    if(d > interactables[i]->int_type->trigger_range) continue;
-                    if(d < closest_d || !close_to_interactable_to_use) {
-                        close_to_interactable_to_use = interactables[i];
-                        closest_d = d;
-                        done = true;
-                    }
-                }
-            }
-        }
-        
-        /***********************************
-        *                             ***  *
-        *   Current leader's group   ****O *
-        *                             ***  *
-        ************************************/
-        
-        size_t n_members = cur_leader_ptr->group->members.size();
-        closest_group_member = NULL;
-        if(!cur_leader_ptr->holding.empty()) {
-            closest_group_member = cur_leader_ptr->holding[0];
-        }
-        closest_group_member_distant = false;
-        
-        if(n_members > 0 && !closest_group_member) {
-        
-            update_closest_group_member();
-        }
-        
-        float old_group_move_magnitude = group_move_magnitude;
-        point group_move_coords;
-        float new_group_move_angle;
-        group_movement.get_clean_info(
-            &group_move_coords, &new_group_move_angle, &group_move_magnitude
-        );
-        if(group_move_magnitude > 0) {
-            //This stops arrows that were fading away to the left from
-            //turning to angle 0 because the magnitude reached 0.
-            group_move_angle = new_group_move_angle;
-        }
-        
-        if(group_move_cursor) {
-            group_move_angle = cursor_angle;
-            float leader_to_cursor_dist =
-                dist(cur_leader_ptr->pos, leader_cursor_w).to_float();
-            group_move_magnitude =
-                leader_to_cursor_dist / cursor_max_dist;
-        }
-        
-        if(old_group_move_magnitude != group_move_magnitude) {
-            if(group_move_magnitude != 0) {
-                cur_leader_ptr->signal_group_move_start();
-            } else {
-                cur_leader_ptr->signal_group_move_end();
-            }
-        }
-        
-        
-        /********************
-        *             .-.   *
-        *   Cursor   ( = )> *
-        *             `-´   *
-        ********************/
-        
-        point mouse_cursor_speed;
-        float dummy_magnitude;
-        cursor_movement.get_clean_info(
-            &mouse_cursor_speed, &dummy_angle, &dummy_magnitude
-        );
-        mouse_cursor_speed =
-            mouse_cursor_speed * delta_t* MOUSE_CURSOR_MOVE_SPEED;
-            
-        mouse_cursor_s += mouse_cursor_speed;
-        
-        mouse_cursor_w = mouse_cursor_s;
-        al_transform_coordinates(
-            &screen_to_world_transform,
-            &mouse_cursor_w.x, &mouse_cursor_w.y
-        );
-        leader_cursor_w = mouse_cursor_w;
-        
-        cursor_angle =
-            get_angle(cur_leader_ptr->pos, leader_cursor_w);
-            
-        dist leader_to_cursor_dist(cur_leader_ptr->pos, leader_cursor_w);
-        if(leader_to_cursor_dist > cursor_max_dist) {
-            //TODO with an analog stick, if the cursor is being moved,
-            //it's considered off-limit a lot more than it should.
-            
-            //Cursor goes beyond the range limit.
-            leader_cursor_w.x =
-                cur_leader_ptr->pos.x + (cos(cursor_angle) * cursor_max_dist);
-            leader_cursor_w.y =
-                cur_leader_ptr->pos.y + (sin(cursor_angle) * cursor_max_dist);
-                
-            if(mouse_cursor_speed.x != 0 || mouse_cursor_speed.y != 0) {
-                //If we're speeding the mouse cursor (via analog stick),
-                //don't let it go beyond the edges.
-                mouse_cursor_w = leader_cursor_w;
-                mouse_cursor_s = mouse_cursor_w;
-                al_transform_coordinates(
-                    &world_to_screen_transform,
-                    &mouse_cursor_s.x, &mouse_cursor_s.y
-                );
-            }
-        }
-        
-        leader_cursor_s = leader_cursor_w;
-        al_transform_coordinates(
-            &world_to_screen_transform,
-            &leader_cursor_s.x, &leader_cursor_s.y
-        );
-        
-        
-        
-        /**************************
-        *                    /  / *
-        *   Precipitation     / / *
-        *                   /  /  *
-        **************************/
-        
-        /*
-        if(
-            cur_area_data.weather_condition.precipitation_type !=
-            PRECIPITATION_TYPE_NONE
-        ) {
-            precipitation_timer.tick(delta_t);
-            if(precipitation_timer.ticked) {
-                precipitation_timer = timer(
-                    cur_area_data.weather_condition.
-                    precipitation_frequency.get_random_number()
-                );
-                precipitation_timer.start();
-                precipitation.push_back(point(0, 0));
-            }
-        
-            for(size_t p = 0; p < precipitation.size();) {
-                precipitation[p].y +=
-                    cur_area_data.weather_condition.
-                    precipitation_speed.get_random_number() * delta_t;
-                if(precipitation[p].y > scr_h) {
-                    precipitation.erase(precipitation.begin() + p);
-                } else {
-                    p++;
-                }
-            }
-        }
-        */
-        
-        
-        /********************
-        *             ~ ~ ~ *
-        *   Liquids    ~ ~  *
-        *             ~ ~ ~ *
-        ********************/
-        for(auto l = liquids.begin(); l != liquids.end(); ++l) {
-            l->second.anim_instance.tick(delta_t);
-        }
-        
-    } else { //Displaying a message.
-    
-        if(
-            cur_message_char <
-            cur_message_stopping_chars[cur_message_section + 1]
-        ) {
-            if(cur_message_char_timer.duration == 0.0f) {
-                size_t stopping_char =
-                    cur_message_stopping_chars[cur_message_section + 1];
-                //Display everything right away.
-                cur_message_char = stopping_char;
-            } else {
-                cur_message_char_timer.tick(delta_t);
-            }
-        }
-        
-    }
-    
-    hud_items.tick(delta_t);
-    replay_timer.tick(delta_t);
-    
-    //Process and print framerate and system info.
-    if(show_system_info) {
-    
-        framerate_history.push_back(1.0 / delta_t);
-        if(framerate_history.size() > FRAMERATE_HISTORY_SIZE) {
-            framerate_history.erase(framerate_history.begin());
-        }
-        
-        framerate_last_avg_point++;
-        
-        float sample_avg;
-        
-        if(framerate_last_avg_point >= FRAMERATE_AVG_SAMPLE_SIZE) {
-            //Let's get an average, using FRAMERATE_AVG_SAMPLE_SIZE frames.
-            //If we can fit a sample of this size using the most recent
-            //unsampled frames, then use those. Otherwise, keep using the last
-            //block, which starts at framerate_last_avg_point.
-            //This makes it so the average stays the same for a bit of time,
-            //so the player can actually read it.
-            if(framerate_last_avg_point > FRAMERATE_AVG_SAMPLE_SIZE * 2) {
-                framerate_last_avg_point = FRAMERATE_AVG_SAMPLE_SIZE;
-            }
-            float sample_avg_sum = 0;
-            size_t sample_avg_point_count = 0;
-            size_t sample_size =
-                min(
-                    (size_t) FRAMERATE_AVG_SAMPLE_SIZE,
-                    framerate_history.size()
-                );
-                
-            for(size_t f = 0; f < sample_size; ++f) {
-                size_t idx =
-                    framerate_history.size() - framerate_last_avg_point + f;
-                sample_avg_sum += framerate_history[idx];
-                sample_avg_point_count++;
-            }
-            
-            sample_avg = sample_avg_sum / (float) sample_avg_point_count;
-            
-        } else {
-            //If there are less than FRAMERATE_AVG_SAMPLE_SIZE frames in
-            //the history, the average will change every frame until we get
-            //that. This defeats the purpose of a smoothly-updating number,
-            //so until that requirement is filled, let's stick to the oldest
-            //record.
-            sample_avg = framerate_history[0];
-            
-        }
-        
-        string fps_str =
-            box_string(f2s(sample_avg), 12, " avg, ") +
-            box_string(f2s(1.0 / delta_t), 12, " now, ") +
-            i2s(game_fps) + " intended";
-        string n_mobs_str =
-            box_string(i2s(mobs.size()), 7);
-        string n_particles_str =
-            box_string(i2s(particles.get_count()), 7);
-        string resolution_str =
-            i2s(scr_w) + "x" + i2s(scr_h);
-        string area_v_str =
-            cur_area_data.version;
-        string area_creator_str =
-            cur_area_data.creator;
-        string engine_v_str =
-            i2s(VERSION_MAJOR) + "." +
-            i2s(VERSION_MINOR) + "." +
-            i2s(VERSION_REV);
-        string game_v_str =
-            game_version;
-            
-        print_info(
-            "FPS: " + fps_str +
-            "\n"
-            "Mobs: " + n_mobs_str + " Particles: " + n_particles_str +
-            "\n"
-            "Resolution: " + resolution_str +
-            "\n"
-            "Area version " + area_v_str + ", by " + area_creator_str +
-            "\n"
-            "Pikifen version " + engine_v_str +
-            ", game version " + game_v_str,
-            1.0f, 1.0f
-        );
-        
-    } else {
-        framerate_last_avg_point = 0;
-        framerate_history.clear();
-    }
-    
-    //Print info on a mob.
-    if(creator_tool_info_lock) {
-        string name_str =
-            box_string(creator_tool_info_lock->type->name, 26);
-        string coords_str =
-            box_string(
-                box_string(f2s(creator_tool_info_lock->pos.x), 8, " ") +
-                box_string(f2s(creator_tool_info_lock->pos.y), 8, " ") +
-                box_string(f2s(creator_tool_info_lock->z), 7),
-                23
-            );
-        string state_h_str =
-            (
-                creator_tool_info_lock->fsm.cur_state ?
-                creator_tool_info_lock->fsm.cur_state->name :
-                "(None!)"
-            );
-        for(unsigned char p = 0; p < STATE_HISTORY_SIZE; ++p) {
-            state_h_str +=
-                " " + creator_tool_info_lock->fsm.prev_state_names[p];
-        }
-        string anim_str =
-            creator_tool_info_lock->anim.cur_anim ?
-            creator_tool_info_lock->anim.cur_anim->name :
-            "(None!)";
-        string health_str =
-            box_string(
-                box_string(f2s(creator_tool_info_lock->health), 6) +
-                " / " +
-                box_string(
-                    f2s(creator_tool_info_lock->type->max_health), 6
-                ),
-                23
-            );
-        string timer_str =
-            f2s(creator_tool_info_lock->script_timer.time_left);
-        string vars_str;
-        if(!creator_tool_info_lock->vars.empty()) {
-            for(
-                auto v = creator_tool_info_lock->vars.begin();
-                v != creator_tool_info_lock->vars.end(); ++v
-            ) {
-                vars_str += v->first + "=" + v->second + "; ";
-            }
-            vars_str.erase(vars_str.size() - 2, 2);
-        } else {
-            vars_str = "(None)";
-        }
-        
-        print_info(
-            "Mob: " + name_str +
-            "Coords: " + coords_str +
-            "\n"
-            "Last states: " + state_h_str +
-            "\n"
-            "Animation: " + anim_str +
-            "\n"
-            "Health: " + health_str + " Timer: " + timer_str +
-            "\n"
-            "Vars: " + vars_str,
-            5.0f, 3.0f
-        );
-    }
-    
-    //Print mouse coordinates.
-    if(creator_tool_geometry_info) {
-        sector* mouse_sector =
-            get_sector(mouse_cursor_w, NULL, true);
-            
-        string coords_str =
-            box_string(f2s(mouse_cursor_w.x), 6) + " " +
-            box_string(f2s(mouse_cursor_w.y), 6);
-        string blockmap_str =
-            box_string(
-                i2s(cur_area_data.bmap.get_col(mouse_cursor_w.x)), 5, " "
-            ) +
-            i2s(cur_area_data.bmap.get_row(mouse_cursor_w.y));
-        string sector_z_str, sector_light_str, sector_tex_str;
-        if(mouse_sector) {
-            sector_z_str =
-                box_string(f2s(mouse_sector->z), 6);
-            sector_light_str =
-                box_string(i2s(mouse_sector->brightness), 3);
-            sector_tex_str =
-                mouse_sector->texture_info.file_name;
-        }
-        
-        string str =
-            "Mouse coords: " + coords_str +
-            "\n"
-            "Blockmap under mouse: " + blockmap_str +
-            "\n"
-            "Sector under mouse: ";
-            
-        if(mouse_sector) {
-            str +=
-                "\n"
-                "  Z: " + sector_z_str + " Light: " + sector_light_str +
-                "\n"
-                "  Texture: " + sector_tex_str;
-        } else {
-            str += "None";
-        }
-        
-        print_info(str, 1.0f, 1.0f);
-    }
-    
-    info_print_timer.tick(delta_t);
-    
-    if(!ready_for_input) {
-        ready_for_input = true;
-        is_input_allowed = true;
-    }
-    
+
+	if (cur_message.empty()) {
+
+		/************************************
+		*                              .-.  *
+		*   Timer things - gameplay   ( L ) *
+		*                              `-´  *
+		*************************************/
+
+		day_minutes += (day_minutes_per_irl_sec * delta_t);
+		if (day_minutes > 60 * 24) day_minutes -= 60 * 24;
+
+		area_time_passed += delta_t;
+		if (day_minutes > day_minutes_end - (23*(1/day_minutes_per_irl_sec))) {
+			if (msx_mission.instance) {
+				msx_mission.stop();
+			}
+			if (!msx_today.instance) {
+				msx_alert.play(24, false, 0.7, 0.5, 1.0);
+			}
+		}
+		//Tick all particles.
+		particles.tick_all(delta_t);
+
+		//Ticks all status effect animations.
+		for (auto s = status_types.begin(); s != status_types.end(); ++s) {
+			s->second.anim_instance.tick(delta_t);
+		}
+
+
+		/*******************
+		*             +--+ *
+		*   Sectors   |  | *
+		*             +--+ *
+		********************/
+		for (size_t s = 0; s < cur_area_data.sectors.size(); ++s) {
+			sector* s_ptr = cur_area_data.sectors[s];
+
+			if (s_ptr->draining_liquid) {
+
+				s_ptr->liquid_drain_left -= delta_t;
+
+				if (s_ptr->liquid_drain_left <= 0) {
+
+					for (size_t h = 0; h < s_ptr->hazards.size();) {
+						if (s_ptr->hazards[h]->associated_liquid) {
+							s_ptr->hazards.erase(s_ptr->hazards.begin() + h);
+						}
+						else {
+							++h;
+						}
+					}
+
+					s_ptr->liquid_drain_left = 0;
+					s_ptr->draining_liquid = false;
+				}
+			}
+		}
+
+
+
+
+
+		/*****************
+		*                *
+		*   Mobs   ()--> *
+		*                *
+		******************/
+
+		size_t n_mobs = mobs.size();
+		for (size_t m = 0; m < n_mobs; ++m) {
+			//Tick the mob.
+			mob* m_ptr = mobs[m];
+			m_ptr->tick();
+
+			if (m_ptr->fsm.cur_state) {
+				process_mob_interactions(m_ptr, m);
+			}
+		}
+
+		for (size_t m = 0; m < n_mobs;) {
+			//Mob deletion.
+			mob* m_ptr = mobs[m];
+			if (m_ptr->to_delete) {
+				delete_mob(m_ptr);
+				n_mobs--;
+				continue;
+			}
+			m++;
+		}
+
+
+
+
+
+
+		/**************************
+		*                    /  / *
+		*   Precipitation     / / *
+		*                   /  /  *
+		**************************/
+
+		/*
+		if(
+			cur_area_data.weather_condition.precipitation_type !=
+			PRECIPITATION_TYPE_NONE
+		) {
+			precipitation_timer.tick(delta_t);
+			if(precipitation_timer.ticked) {
+				precipitation_timer = timer(
+					cur_area_data.weather_condition.
+					precipitation_frequency.get_random_number()
+				);
+				precipitation_timer.start();
+				precipitation.push_back(point(0, 0));
+			}
+
+			for(size_t p = 0; p < precipitation.size();) {
+				precipitation[p].y +=
+					cur_area_data.weather_condition.
+					precipitation_speed.get_random_number() * delta_t;
+				if(precipitation[p].y > scr_h) {
+					precipitation.erase(precipitation.begin() + p);
+				} else {
+					p++;
+				}
+			}
+		}
+		*/
+
+
+		/********************
+		*             ~ ~ ~ *
+		*   Liquids    ~ ~  *
+		*             ~ ~ ~ *
+		********************/
+		for (auto l = liquids.begin(); l != liquids.end(); ++l) {
+			l->second.anim_instance.tick(delta_t);
+		}
+
+	}
+	else { //Displaying a message.
+
+		if (
+			cur_message_char <
+			cur_message_stopping_chars[cur_message_section + 1]
+			) {
+			if (cur_message_char_timer.duration == 0.0f) {
+				size_t stopping_char =
+					cur_message_stopping_chars[cur_message_section + 1];
+				//Display everything right away.
+				cur_message_char = stopping_char;
+			}
+			else {
+				cur_message_char_timer.tick(delta_t);
+			}
+		}
+
+	}
+
+	hud_items.tick(delta_t);
+	replay_timer.tick(delta_t);
+
+	//Process and print framerate and system info.
+	if (show_system_info) {
+
+		framerate_history.push_back(1.0 / delta_t);
+		if (framerate_history.size() > FRAMERATE_HISTORY_SIZE) {
+			framerate_history.erase(framerate_history.begin());
+		}
+
+		framerate_last_avg_point++;
+
+		float sample_avg;
+
+		if (framerate_last_avg_point >= FRAMERATE_AVG_SAMPLE_SIZE) {
+			//Let's get an average, using FRAMERATE_AVG_SAMPLE_SIZE frames.
+			//If we can fit a sample of this size using the most recent
+			//unsampled frames, then use those. Otherwise, keep using the last
+			//block, which starts at framerate_last_avg_point.
+			//This makes it so the average stays the same for a bit of time,
+			//so the player can actually read it.
+			if (framerate_last_avg_point > FRAMERATE_AVG_SAMPLE_SIZE * 2) {
+				framerate_last_avg_point = FRAMERATE_AVG_SAMPLE_SIZE;
+			}
+			float sample_avg_sum = 0;
+			size_t sample_avg_point_count = 0;
+			size_t sample_size =
+				min(
+				(size_t)FRAMERATE_AVG_SAMPLE_SIZE,
+					framerate_history.size()
+				);
+
+			for (size_t f = 0; f < sample_size; ++f) {
+				size_t idx =
+					framerate_history.size() - framerate_last_avg_point + f;
+				sample_avg_sum += framerate_history[idx];
+				sample_avg_point_count++;
+			}
+
+			sample_avg = sample_avg_sum / (float)sample_avg_point_count;
+
+		}
+		else {
+			//If there are less than FRAMERATE_AVG_SAMPLE_SIZE frames in
+			//the history, the average will change every frame until we get
+			//that. This defeats the purpose of a smoothly-updating number,
+			//so until that requirement is filled, let's stick to the oldest
+			//record.
+			sample_avg = framerate_history[0];
+
+		}
+
+		string fps_str =
+			box_string(f2s(sample_avg), 12, " avg, ") +
+			box_string(f2s(1.0 / delta_t), 12, " now, ") +
+			i2s(game_fps) + " intended";
+		string n_mobs_str =
+			box_string(i2s(mobs.size()), 7);
+		string n_particles_str =
+			box_string(i2s(particles.get_count()), 7);
+		string resolution_str =
+			i2s(scr_w) + "x" + i2s(scr_h);
+		string area_v_str =
+			cur_area_data.version;
+		string area_creator_str =
+			cur_area_data.creator;
+		string engine_v_str =
+			i2s(VERSION_MAJOR) + "." +
+			i2s(VERSION_MINOR) + "." +
+			i2s(VERSION_REV);
+		string game_v_str =
+			game_version;
+
+		print_info(
+			"FPS: " + fps_str +
+			"\n"
+			"Mobs: " + n_mobs_str + " Particles: " + n_particles_str +
+			"\n"
+			"Resolution: " + resolution_str +
+			"\n"
+			"Area version " + area_v_str + ", by " + area_creator_str +
+			"\n"
+			"Pikifen version " + engine_v_str +
+			", game version " + game_v_str,
+			1.0f, 1.0f
+		);
+
+	}
+	else {
+		framerate_last_avg_point = 0;
+		framerate_history.clear();
+	}
+
+	//Print info on a mob.
+	if (creator_tool_info_lock) {
+		string name_str =
+			box_string(creator_tool_info_lock->type->name, 26);
+		string coords_str =
+			box_string(
+				box_string(f2s(creator_tool_info_lock->pos.x), 8, " ") +
+				box_string(f2s(creator_tool_info_lock->pos.y), 8, " ") +
+				box_string(f2s(creator_tool_info_lock->z), 7),
+				23
+			);
+		string state_h_str =
+			(
+				creator_tool_info_lock->fsm.cur_state ?
+				creator_tool_info_lock->fsm.cur_state->name :
+				"(None!)"
+				);
+		for (unsigned char p = 0; p < STATE_HISTORY_SIZE; ++p) {
+			state_h_str +=
+				" " + creator_tool_info_lock->fsm.prev_state_names[p];
+		}
+		string anim_str =
+			creator_tool_info_lock->anim.cur_anim ?
+			creator_tool_info_lock->anim.cur_anim->name :
+			"(None!)";
+		string health_str =
+			box_string(
+				box_string(f2s(creator_tool_info_lock->health), 6) +
+				" / " +
+				box_string(
+					f2s(creator_tool_info_lock->type->max_health), 6
+				),
+				23
+			);
+		string timer_str =
+			f2s(creator_tool_info_lock->script_timer.time_left);
+		string vars_str;
+		if (!creator_tool_info_lock->vars.empty()) {
+			for (
+				auto v = creator_tool_info_lock->vars.begin();
+				v != creator_tool_info_lock->vars.end(); ++v
+				) {
+				vars_str += v->first + "=" + v->second + "; ";
+			}
+			vars_str.erase(vars_str.size() - 2, 2);
+		}
+		else {
+			vars_str = "(None)";
+		}
+
+		print_info(
+			"Mob: " + name_str +
+			"Coords: " + coords_str +
+			"\n"
+			"Last states: " + state_h_str +
+			"\n"
+			"Animation: " + anim_str +
+			"\n"
+			"Health: " + health_str + " Timer: " + timer_str +
+			"\n"
+			"Vars: " + vars_str,
+			5.0f, 3.0f
+		);
+	}
+
+	//Print mouse coordinates.
+	if (creator_tool_geometry_info) {
+		sector* mouse_sector =
+			get_sector(mouse_cursor_w[pnum], NULL, true);
+
+		string coords_str =
+			box_string(f2s(mouse_cursor_w[pnum].x), 6) + " " +
+			box_string(f2s(mouse_cursor_w[pnum].y), 6);
+		string blockmap_str =
+			box_string(
+				i2s(cur_area_data.bmap.get_col(mouse_cursor_w[pnum].x)), 5, " "
+			) +
+			i2s(cur_area_data.bmap.get_row(mouse_cursor_w[pnum].y));
+		string sector_z_str, sector_light_str, sector_tex_str;
+		if (mouse_sector) {
+			sector_z_str =
+				box_string(f2s(mouse_sector->z), 6);
+			sector_light_str =
+				box_string(i2s(mouse_sector->brightness), 3);
+			sector_tex_str =
+				mouse_sector->texture_info.file_name;
+		}
+
+		string str =
+			"Mouse coords: " + coords_str +
+			"\n"
+			"Blockmap under mouse: " + blockmap_str +
+			"\n"
+			"Sector under mouse: ";
+
+		if (mouse_sector) {
+			str +=
+				"\n"
+				"  Z: " + sector_z_str + " Light: " + sector_light_str +
+				"\n"
+				"  Texture: " + sector_tex_str;
+		}
+		else {
+			str += "None";
+		}
+
+		print_info(str, 1.0f, 1.0f);
+	}
+
+	info_print_timer.tick(delta_t);
+
+	if (!ready_for_input) {
+		ready_for_input = true;
+		is_input_allowed = true;
+	}
+
 }
 
 
@@ -1210,15 +1246,17 @@ void gameplay::process_mob_touches(
             ) {
                 pik_land_ev->run(m_ptr, (void*) m2_ptr);
             }
-            if(
-                touch_le_ev && m2_ptr == cur_leader_ptr &&
-                //Small hack. This way,
-                //Pikmin don't get bumped by leaders that are,
-                //for instance, lying down.
-                m2_ptr->fsm.cur_state->id == LEADER_STATE_ACTIVE
-            ) {
-                touch_le_ev->run(m_ptr, (void*) m2_ptr);
-            }
+			for (size_t o = 0; o < max_players; ++o) {
+				if (
+					touch_le_ev && m2_ptr == cur_leader_ptrs[o] &&
+					//Small hack. This way,
+					//Pikmin don't get bumped by leaders that are,
+					//for instance, lying down.
+					m2_ptr->fsm.cur_state->id == LEADER_STATE_ACTIVE
+					) {
+					touch_le_ev->run(m_ptr, (void*)m2_ptr);
+				}
+			}
         }
         
     }

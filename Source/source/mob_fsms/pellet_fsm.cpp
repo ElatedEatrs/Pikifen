@@ -26,6 +26,9 @@ void pellet_fsm::create_fsm(mob_type* typ) {
         efc.new_event(MOB_EVENT_ON_ENTER); {
             efc.run(gen_mob_fsm::carry_stop_move);
         }
+		efc.new_event(MOB_EVENT_RECEIVE_MESSAGE); {
+			efc.run(pellet_fsm::stopp);
+		}
         efc.new_event(MOB_EVENT_LANDED); {
             efc.run(pellet_fsm::stand_still);
         }
@@ -119,7 +122,14 @@ void pellet_fsm::create_fsm(mob_type* typ) {
  * When the pellet should lose its momentum and stand still.
  */
 void pellet_fsm::stand_still(mob* m, void* info1, void* info2) {
-    m->stop_chasing();
-    m->stop_turning();
+	if (m->breadbug == false) {
+		m->stop_chasing();
+		m->stop_turning();
+	}
 }
-
+void pellet_fsm::stopp(mob* m, void* info1, void* info2) {
+	m->breadbug = false;
+	m->stop_circling();
+		m->stop_chasing();
+		m->stop_turning();
+}

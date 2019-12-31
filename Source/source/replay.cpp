@@ -11,6 +11,7 @@
 #include <algorithm>
 
 #include "replay.h"
+#include "vars.h"
 
 using namespace std;
 
@@ -55,7 +56,7 @@ void replay::add_state(
     const vector<treasure*> &treasure_list,
     const vector<onion*> &onion_list,
     const vector<mob*> &obstacle_list,
-    const size_t cur_leader_nr
+    const vector<size_t> cur_leader_nrs[4] 
 ) {
     states.push_back(replay_state());
     replay_state* new_state_ptr = &(states[states.size() - 1]);
@@ -110,11 +111,7 @@ void replay::add_state(
         }
     }
     
-    if(cur_leader_nr != prev_leader_nr) {
-        replay_event ev(REPLAY_EVENT_LEADER_SWITCHED, cur_leader_nr);
-        new_state_ptr->events.push_back(ev);
-        prev_leader_nr = cur_leader_nr;
-    }
+   
     
     new_state_ptr->elements.reserve(
         leader_list.size() +

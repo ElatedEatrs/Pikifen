@@ -65,7 +65,7 @@
 
 //Returns the task range for whether the Pikmin is idling or being C-sticked.
 #define task_range(p) \
-    (((p)->following_group == cur_leader_ptr && group_move_magnitude) ? \
+    (((p)->following_group == cur_leader_ptrs[pnum] && group_move_magnitude[pnum]) ? \
      group_move_task_range : idle_task_range)
 
 
@@ -130,7 +130,7 @@ int show_message_box(
 void signal_handler(const int signum);
 void spew_pikmin_seed(
     const point pos, const float z, pikmin_type* pik_type,
-    const float angle, const float horizontal_speed, const float vertical_speed
+    const float angle, const float horizontal_speed, const float vertical_speed, mob* o = NULL
 );
 string standardize_path(const string &path);
 void start_message(string text, ALLEGRO_BITMAP* speaker_bmp);

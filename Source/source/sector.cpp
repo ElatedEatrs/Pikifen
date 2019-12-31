@@ -309,8 +309,8 @@ void area_data::generate_blockmap() {
     bmap.top_left_corner = min_coords;
     //Add one more to the cols/rows because, suppose there's an edge at y = 256.
     //The row would be 2. In reality, the row should be 3.
-    bmap.n_cols = ceil((max_coords.x - min_coords.x) / BLOCKMAP_BLOCK_SIZE) + 1;
-    bmap.n_rows = ceil((max_coords.y - min_coords.y) / BLOCKMAP_BLOCK_SIZE) + 1;
+    bmap.n_cols = ceil((max_coords.x - min_coords.x) / BLOCKMAP_BLOCK_SIZE) + 2;
+    bmap.n_rows = ceil((max_coords.y - min_coords.y) / BLOCKMAP_BLOCK_SIZE) + 2;
     
     bmap.edges.assign(
         bmap.n_cols, vector<vector<edge*> >(bmap.n_rows, vector<edge*>())
@@ -1039,15 +1039,14 @@ void edge::swap_vertexes() {
  */
 mob_gen::mob_gen(
     mob_category* category, const point &pos,
-    mob_type* type, const float angle, const string &vars, const int lid
+    mob_type* type, const float angle, const string &vars
 ) :
     category(category),
     type(type),
     pos(pos),
     angle(angle),
-    vars(vars), 
-    lid(lid){
-    
+    vars(vars)
+{
 }
 
 
@@ -1879,30 +1878,38 @@ void get_sector_bounding_box(
 sector* get_sector(
     const point &p, size_t* sector_nr, const bool use_blockmap
 ) {
+	size_t col = 0;
+		size_t row = 0;
+		if (use_blockmap) {
 
-    if(use_blockmap) {
-    
-        size_t col = cur_area_data.bmap.get_col(p.x);
-        size_t row = cur_area_data.bmap.get_row(p.y);
-        if(col == INVALID || row == INVALID) return NULL;
+			col = cur_area_data.bmap.get_col(p.x);
+			row = cur_area_data.bmap.get_row(p.y);
+			if (col == INVALID || row == INVALID) return NULL;
+		}
+		
+		if (use_blockmap && cur_area_data.bmap.sectors[col][row].empty() == false) {
         
-        unordered_set<sector*>* sectors = &cur_area_data.bmap.sectors[col][row];
+			unordered_set<sector*>* sectors = &cur_area_data.bmap.sectors[col][row];
         
-        if(sectors->size() == 1) return *sectors->begin();
+			if(sectors->size() == 1) return *sectors->begin();
         
-        for(auto s = sectors->begin(); s != sectors->end(); ++s) {
+        
+			for(auto s = sectors->begin(); s != sectors->end(); ++s) {
         
             if(!(*s)) {
                 continue;
             }
-            if(is_point_in_sector(p, *s)) {
+            
+			if(is_point_in_sector(p, *s)) {
                 return *s;
-            }
-        }
+            
+			
+			}
+        
+			}
         
         return NULL;
-        
-    } else {
+        }
     
         for(size_t s = 0; s < cur_area_data.sectors.size(); ++s) {
             sector* s_ptr = cur_area_data.sectors[s];
@@ -1925,7 +1932,7 @@ sector* get_sector(
         if(sector_nr) *sector_nr = INVALID;
         return NULL;
         
-    }
+    
 }
 
 

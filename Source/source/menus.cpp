@@ -96,6 +96,22 @@ void main_menu::load() {
     }, "Area editor", font_area_name
         )
     );
+	menu_widgets.push_back(
+		new menu_button(
+			point(scr_w * 0.5, scr_h * 0.47), point(scr_w * 0.8, scr_h * 0.06),
+			[this]() {
+		day += 1;
+	}, "temp:DAY+" + i2s(day), font_area_name
+		)
+	);
+	menu_widgets.push_back(
+		new menu_button(
+			point(scr_w * 0.5, scr_h * 0.39), point(scr_w * 0.8, scr_h * 0.06),
+			[this]() {
+		day -= 1;
+	}, "temp:DAY-" + i2s(day), font_area_name
+		)
+	);
     back_widget =
         new menu_button(
         point(scr_w * 0.5, scr_h * 0.87), point(scr_w * 0.8, scr_h * 0.06),
@@ -483,6 +499,37 @@ void options_menu::load() {
     ">", font_main
         )
     );
+
+	menu_widgets.push_back(
+		new menu_button(
+			point(scr_w * 0.05, scr_h * 0.50),
+			point(scr_w * 0.05, scr_h * 0.08),
+			[this]() {
+		change_playernumber(-1);
+	},
+			"<", font_main
+		)
+	);
+
+	playernum_widget =
+		new menu_text(
+			point(scr_w * 0.26, scr_h * 0.50),
+			point(scr_w * 0.35, scr_h * 0.08),
+			"Playernum:" + i2s(max_players), font_main,
+			al_map_rgb(255, 255, 255), ALLEGRO_ALIGN_LEFT
+		);
+	menu_widgets.push_back(playernum_widget);
+
+	menu_widgets.push_back(
+		new menu_button(
+			point(scr_w * 0.45, scr_h * 0.50),
+			point(scr_w * 0.05, scr_h * 0.08),
+			[this]() {
+		change_playernumber(1);
+	},
+			">", font_main
+		)
+	);
     
     menu_widgets.push_back(
         new menu_button(
@@ -539,7 +586,14 @@ void options_menu::handle_controls(const ALLEGRO_EVENT &ev) {
     
     handle_widget_events(ev);
 }
+void options_menu::change_playernumber(const signed int step) {
+	
+	max_players += step;
+	if (max_players <= 0)max_players = 4;
+	if (max_players >= 5)max_players = 1;
+	update();
 
+}
 
 /* ----------------------------------------------------------------------------
  * Changes to the next resolution preset in the list.
@@ -633,7 +687,7 @@ void options_menu::update() {
             break;
         }
     }
-    
+	playernum_widget->text = "Playernum:" + i2s(max_players);
     resolution_widget->text =
         "Resolution: " +
         i2s(intended_scr_w) + "x" +
@@ -701,7 +755,7 @@ void controls_menu::load() {
             point(scr_w * 0.15, scr_h * 0.08),
     [this] () {
         cur_page_nr = 0;
-        cur_player_nr = sum_and_wrap(cur_player_nr, -1, MAX_PLAYERS);
+        cur_player_nr = sum_and_wrap(cur_player_nr, -1, max_players);
         cur_player_nr_widget->start_juicy_grow();
         update();
     },
@@ -723,7 +777,7 @@ void controls_menu::load() {
             point(scr_w * 0.15, scr_h * 0.08),
     [this] () {
         cur_page_nr = 0;
-        cur_player_nr = sum_and_wrap(cur_player_nr, 1, MAX_PLAYERS);
+        cur_player_nr = sum_and_wrap(cur_player_nr, 1, max_players);
         cur_player_nr_widget->start_juicy_grow();
         update();
     },
@@ -950,9 +1004,7 @@ void controls_menu::handle_controls(const ALLEGRO_EVENT &ev) {
         } else if(ev.type == ALLEGRO_EVENT_JOYSTICK_AXIS) {
             c_ptr->type =
                 (
-                    ev.joystick.pos > 0 ?
-                    CONTROL_TYPE_JOYSTICK_AXIS_POS :
-                    CONTROL_TYPE_JOYSTICK_AXIS_NEG
+                    CONTROL_TYPE_JOYSTICK_AXIS
                 );
             c_ptr->device_nr = joystick_numbers[ev.joystick.id];
             c_ptr->stick = ev.joystick.stick;

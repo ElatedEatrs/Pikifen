@@ -35,7 +35,8 @@ carry_info_struct::carry_info_struct(mob* m, const size_t destination) :
     is_moving(false),
     intended_mob(nullptr),
     must_return(false),
-    return_dist(0) {
+    return_dist(0),
+	cur_team(INVALID){
     
     for(size_t c = 0; c < m->type->max_carriers; ++c) {
         float angle = TAU / m->type->max_carriers * c;
@@ -625,8 +626,7 @@ mob* create_mob(
     function<void(mob*)> code_after_creation
 ) {
     mob* m_ptr = category->create_mob(pos, type, angle);
-	m_ptr->bond = new mobgroup();
-
+    
     if(code_after_creation) {
         code_after_creation(m_ptr);
     }
@@ -642,7 +642,7 @@ mob* create_mob(
         get_var_vectors(vars, var_name_strings, var_value_strings);
         for(size_t v = 0; v < var_name_strings.size(); ++v) {
             m_ptr->vars[var_name_strings[v]] = var_value_strings[v];
-			m_ptr->varnames.push_back(var_name_strings[v]);
+			m_ptr->varnames = var_name_strings;
         }
     }
     
@@ -727,7 +727,7 @@ mob* create_mob(
             );
         }
     }
-
+    
     mobs.push_back(m_ptr);
     return m_ptr;
 }
@@ -772,7 +772,7 @@ void delete_mob(mob* m_ptr, const bool complete_destruction) {
     m_ptr->type->category->erase_mob(m_ptr);
     mobs.erase(find(mobs.begin(), mobs.end(), m_ptr));
     
-    delete m_ptr;
+    m_ptr = nullptr;
 }
 
 
@@ -842,6 +842,24 @@ size_t string_to_team_nr(const string &team_str) {
         return MOB_TEAM_OBSTACLE;
     } else if(team_str == "other") {
         return MOB_TEAM_OTHER;
-    }
+	}
+	else if (team_str == "marble") {
+		return MOB_TEAM_JURY;
+	}
+	else if (team_str == "anti_marble") {
+		return MOB_TEAM_JERRY;
+	}
+	else if (team_str == "allies_4") {
+		return MOB_TEAM_ALLIES4;
+	}
+	else if (team_str == "allies_1") {
+		return  MOB_TEAM_ALLIES1;
+	}
+	else if (team_str == "allies_2") {
+		return  MOB_TEAM_ALLIES2;
+	}
+	else if (team_str == "allies_3") {
+		return  MOB_TEAM_ALLIES3;
+	}
     return INVALID;
 }

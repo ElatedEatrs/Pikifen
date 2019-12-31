@@ -13,13 +13,14 @@
 #define GAMEPLAY_INCLUDED
 
 #include "game_state.h"
+
 /* ----------------------------------------------------------------------------
  * Standard gameplay state. This is where the action happens.
  */
 class gameplay : public game_state {
 private:
 
-static const float AREA_INTRO_HUD_MOVE_TIME;
+    static const float AREA_INTRO_HUD_MOVE_TIME;
     
     //When processing inter-mob events, we want the mob to follow them from the
     //closest mob to the one farthest away. As such, this struct saves data on
@@ -51,13 +52,19 @@ static const float AREA_INTRO_HUD_MOVE_TIME;
     ALLEGRO_BITMAP* bmp_message_box;
     ALLEGRO_BITMAP* bmp_no_pikmin_bubble;
     ALLEGRO_BITMAP* bmp_sun;
-    
+	ALLEGRO_BITMAP*bmp_player1;
+	ALLEGRO_BITMAP*bmp_player2;
+	ALLEGRO_BITMAP*bmp_player3;
+	ALLEGRO_BITMAP*bmp_player4;
+
+
     timer replay_timer;
-    
+	bool end_of_day;
+	void do_leader_logic();
     void do_aesthetic_logic();
-    void do_game_drawing(
-        ALLEGRO_BITMAP* bmp_output = NULL,
-        ALLEGRO_TRANSFORM* bmp_transform = NULL
+	void do_game_drawing(
+		ALLEGRO_BITMAP* bmp_output = NULL,
+		ALLEGRO_TRANSFORM* bmp_transform = NULL
     );
     void do_gameplay_logic();
     void draw_background(ALLEGRO_BITMAP* bmp_output);
@@ -93,14 +100,11 @@ static const float AREA_INTRO_HUD_MOVE_TIME;
         mob* m_ptr, mob* m2_ptr, const size_t m, const size_t m2, dist &d
     );
     void unload_game_content();
-	
-
-
+    
 public:
-   
     gameplay();
     ~gameplay();
-    
+
     void leave();
     
     virtual void load();

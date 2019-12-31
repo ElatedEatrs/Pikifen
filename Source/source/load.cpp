@@ -31,7 +31,16 @@
 void load_area(
     const string &name, const bool load_for_editor, const bool from_backup
 ) {
-
+	if (load_for_editor == false && day != 1) {
+		data_node file = load_data_file(AREAS_FOLDER_PATH + "/Save" + i2s(day - 1) + ".txt");
+		size_t flag_amounts = file.get_child_by_name("Flags")->get_nr_of_children();
+		for (size_t f = 0; f < flag_amounts; ++f) {
+			data_node* flags = file.get_child_by_name("Flags")->get_child(f);
+			flagnames.push_back(flags->name);
+			if (flags->value == "true") progressflags[flags->name] = true;
+			else progressflags[flags->name] = false;
+		}
+	}
     cur_area_data.clear();
     
     string geometry_file_name;
@@ -64,7 +73,8 @@ void load_area(
         data_file.get_child_by_name("notes")->value;
     cur_area_data.spray_amounts =
         data_file.get_child_by_name("spray_amounts")->value;
-        
+	VERSUS_ON = s2b(data_file.get_child_by_name("versus")->value);
+	max_score = s2i(data_file.get_child_by_name("auto_win")->value);
     if(loading_text_bmp) al_destroy_bitmap(loading_text_bmp);
     if(loading_subtext_bmp) al_destroy_bitmap(loading_subtext_bmp);
     loading_text_bmp = NULL;
@@ -161,118 +171,230 @@ void load_area(
     }
     
     //Sectors.
-    size_t n_sectors =
-        geometry_file.get_child_by_name(
-            "sectors"
-        )->get_nr_of_children_by_name("s");
-    for(size_t s = 0; s < n_sectors; ++s) {
-        data_node* sector_data =
-            geometry_file.get_child_by_name(
-                "sectors"
-            )->get_child_by_name("s", s);
-        sector* new_sector = new sector();
-        
-        new_sector->type =
-            sector_types.get_nr(sector_data->get_child_by_name("type")->value);
-        if(new_sector->type == 255) new_sector->type = SECTOR_TYPE_NORMAL;
-        new_sector->is_bottomless_pit =
-            s2b(
-                sector_data->get_child_by_name(
-                    "is_bottomless_pit"
-                )->get_value_or_default("false")
-            );
-        new_sector->brightness =
-            s2f(
-                sector_data->get_child_by_name(
-                    "brightness"
-                )->get_value_or_default(i2s(DEF_SECTOR_BRIGHTNESS))
-            );
-        new_sector->tag = sector_data->get_child_by_name("tag")->value;
-        new_sector->z = s2f(sector_data->get_child_by_name("z")->value);
-        new_sector->fade = s2b(sector_data->get_child_by_name("fade")->value);
-        new_sector->always_cast_shadow =
-            s2b(
-                sector_data->get_child_by_name("always_cast_shadow")->value
-            );
-            
-        new_sector->texture_info.file_name =
-            sector_data->get_child_by_name("texture")->value;
-        new_sector->texture_info.rot =
-            s2f(sector_data->get_child_by_name("texture_rotate")->value);
-            
-        vector<string> scales =
-            split(sector_data->get_child_by_name("texture_scale")->value);
-        if(scales.size() >= 2) {
-            new_sector->texture_info.scale.x = s2f(scales[0]);
-            new_sector->texture_info.scale.y = s2f(scales[1]);
-        }
-        vector<string> translations =
-            split(sector_data->get_child_by_name("texture_trans")->value);
-        if(translations.size() >= 2) {
-            new_sector->texture_info.translation.x = s2f(translations[0]);
-            new_sector->texture_info.translation.y = s2f(translations[1]);
-        }
-        new_sector->texture_info.tint =
-            s2c(
-                sector_data->get_child_by_name("texture_tint")->
-                get_value_or_default("255 255 255")
-            );
-            
-        if(!new_sector->fade && !new_sector->is_bottomless_pit) {
-            new_sector->texture_info.bitmap =
-                textures.get(new_sector->texture_info.file_name, NULL);
-        }
-        
-        data_node* hazards_node = sector_data->get_child_by_name("hazards");
-        vector<string> hazards_strs =
-            semicolon_list_to_vector(hazards_node->value);
-        for(size_t h = 0; h < hazards_strs.size(); ++h) {
-            string hazard_name = hazards_strs[h];
-            if(hazards.find(hazard_name) == hazards.end()) {
-                log_error(
-                    "Unknown hazard \"" + hazard_name +
-                    "\"!", hazards_node
-                );
-            } else {
-                new_sector->hazards.push_back(&(hazards[hazard_name]));
-            }
-        }
-        new_sector->hazards_str = hazards_node->value;
-        new_sector->hazard_floor =
-            s2b(
-                sector_data->get_child_by_name(
-                    "hazards_floor"
-                )->get_value_or_default("true")
-            );
-            
-        cur_area_data.sectors.push_back(new_sector);
-    }
-    
-    //Mobs.
+	if (day != 1 && load_for_editor == false) {
+		string geoetry_name = AREAS_FOLDER_PATH + "/" + cur_area_data.name + "/" + "Sectors_on_day" + i2s(day - 1) + ".txt";
 
-	int g = geometry_file.get_child_by_name("mobs")->get_nr_of_children();
-  
-    for(size_t m = 0; m <= g; m++) {
-	
-		data_node* mobl_node =
-			geometry_file.get_child_by_name("mobs")->get_child_by_name("mobgroupV" + i2s(m - 1));
-		for (size_t s = 0; s < mobl_node->get_nr_of_children(); ++s) {
+		data_node geoetry_file = load_data_file(geoetry_name);
+
+		size_t n_sectors =
+			geoetry_file.get_child_by_name(
+				"sectors"
+			)->get_nr_of_children_by_name("s");
+		for (size_t s = 0; s < n_sectors; ++s) {
+			data_node* sector_data =
+				geoetry_file.get_child_by_name(
+					"sectors"
+				)->get_child_by_name("s", s);
+			sector* new_sector = new sector();
+
+			new_sector->type =
+				sector_types.get_nr(sector_data->get_child_by_name("type")->value);
+			if (new_sector->type == 255) new_sector->type = SECTOR_TYPE_NORMAL;
+			new_sector->is_bottomless_pit =
+				s2b(
+					sector_data->get_child_by_name(
+						"is_bottomless_pit"
+					)->get_value_or_default("false")
+				);
+			new_sector->brightness =
+				s2f(
+					sector_data->get_child_by_name(
+						"brightness"
+					)->get_value_or_default(i2s(DEF_SECTOR_BRIGHTNESS))
+				);
+			new_sector->tag = sector_data->get_child_by_name("tag")->value;
+			new_sector->z = s2f(sector_data->get_child_by_name("z")->value);
+			new_sector->fade = s2b(sector_data->get_child_by_name("fade")->value);
+			new_sector->always_cast_shadow =
+				s2b(
+					sector_data->get_child_by_name("always_cast_shadow")->value
+				);
+
+			new_sector->texture_info.file_name =
+				sector_data->get_child_by_name("texture")->value;
+			new_sector->texture_info.rot =
+				s2f(sector_data->get_child_by_name("texture_rotate")->value);
+
+			vector<string> scales =
+				split(sector_data->get_child_by_name("texture_scale")->value);
+			if (scales.size() >= 2) {
+				new_sector->texture_info.scale.x = s2f(scales[0]);
+				new_sector->texture_info.scale.y = s2f(scales[1]);
+			}
+			vector<string> translations =
+				split(sector_data->get_child_by_name("texture_trans")->value);
+			if (translations.size() >= 2) {
+				new_sector->texture_info.translation.x = s2f(translations[0]);
+				new_sector->texture_info.translation.y = s2f(translations[1]);
+			}
+			new_sector->texture_info.tint =
+				s2c(
+					sector_data->get_child_by_name("texture_tint")->
+					get_value_or_default("255 255 255")
+				);
+
+			if (!new_sector->fade && !new_sector->is_bottomless_pit) {
+				new_sector->texture_info.bitmap =
+					textures.get(new_sector->texture_info.file_name, NULL);
+			}
+
+			data_node* hazards_node = sector_data->get_child_by_name("hazards");
+			vector<string> hazards_strs =
+				semicolon_list_to_vector(hazards_node->value);
+			for (size_t h = 0; h < hazards_strs.size(); ++h) {
+				string hazard_name = hazards_strs[h];
+				if (hazards.find(hazard_name) == hazards.end()) {
+					log_error(
+						"Unknown hazard \"" + hazard_name +
+						"\"!", hazards_node
+					);
+				}
+				else {
+					new_sector->hazards.push_back(&(hazards[hazard_name]));
+				}
+			}
+			new_sector->hazards_str = hazards_node->value;
+			new_sector->hazard_floor =
+				s2b(
+					sector_data->get_child_by_name(
+						"hazards_floor"
+					)->get_value_or_default("true")
+				);
+			cur_area_data.sectors.push_back(new_sector);
+		}
+	}else {
+		size_t n_sectors =
+			geometry_file.get_child_by_name(
+				"sectors"
+			)->get_nr_of_children_by_name("s");
+		for (size_t s = 0; s < n_sectors; ++s) {
+			data_node* sector_data =
+				geometry_file.get_child_by_name(
+					"sectors"
+				)->get_child_by_name("s", s);
+			sector* new_sector = new sector();
+
+			new_sector->type =
+				sector_types.get_nr(sector_data->get_child_by_name("type")->value);
+			if (new_sector->type == 255) new_sector->type = SECTOR_TYPE_NORMAL;
+			new_sector->is_bottomless_pit =
+				s2b(
+					sector_data->get_child_by_name(
+						"is_bottomless_pit"
+					)->get_value_or_default("false")
+				);
+			new_sector->brightness =
+				s2f(
+					sector_data->get_child_by_name(
+						"brightness"
+					)->get_value_or_default(i2s(DEF_SECTOR_BRIGHTNESS))
+				);
+			new_sector->tag = sector_data->get_child_by_name("tag")->value;
+			new_sector->z = s2f(sector_data->get_child_by_name("z")->value);
+			new_sector->fade = s2b(sector_data->get_child_by_name("fade")->value);
+			new_sector->always_cast_shadow =
+				s2b(
+					sector_data->get_child_by_name("always_cast_shadow")->value
+				);
+
+			new_sector->texture_info.file_name =
+				sector_data->get_child_by_name("texture")->value;
+			new_sector->texture_info.rot =
+				s2f(sector_data->get_child_by_name("texture_rotate")->value);
+
+			vector<string> scales =
+				split(sector_data->get_child_by_name("texture_scale")->value);
+			if (scales.size() >= 2) {
+				new_sector->texture_info.scale.x = s2f(scales[0]);
+				new_sector->texture_info.scale.y = s2f(scales[1]);
+			}
+			vector<string> translations =
+				split(sector_data->get_child_by_name("texture_trans")->value);
+			if (translations.size() >= 2) {
+				new_sector->texture_info.translation.x = s2f(translations[0]);
+				new_sector->texture_info.translation.y = s2f(translations[1]);
+			}
+			new_sector->texture_info.tint =
+				s2c(
+					sector_data->get_child_by_name("texture_tint")->
+					get_value_or_default("255 255 255")
+				);
+
+			if (!new_sector->fade && !new_sector->is_bottomless_pit) {
+				new_sector->texture_info.bitmap =
+					textures.get(new_sector->texture_info.file_name, NULL);
+			}
+
+			data_node* hazards_node = sector_data->get_child_by_name("hazards");
+			vector<string> hazards_strs =
+				semicolon_list_to_vector(hazards_node->value);
+			for (size_t h = 0; h < hazards_strs.size(); ++h) {
+				string hazard_name = hazards_strs[h];
+				if (hazards.find(hazard_name) == hazards.end()) {
+					log_error(
+						"Unknown hazard \"" + hazard_name +
+						"\"!", hazards_node
+					);
+				}
+				else {
+					new_sector->hazards.push_back(&(hazards[hazard_name]));
+				}
+			}
+			new_sector->hazards_str = hazards_node->value;
+			new_sector->hazard_floor =
+				s2b(
+					sector_data->get_child_by_name(
+						"hazards_floor"
+					)->get_value_or_default("true")
+				);
+
+			cur_area_data.sectors.push_back(new_sector);
+		}
+	}
+    //Mobs.
+    vector<pair<size_t, size_t> > mob_links_buffer;
+
+	if (day != 1 && load_for_editor == false) {
+		load_day(name, true, false, i2s(day));
+		for (size_t f = 0; f < flagnames.size(); ++f) {
+			if (progressflags[flagnames[f]] == false) {
+				load_mobs_from_flags(name, false, false, flagnames[f]);
+			}
+			else if(progressflags[flagnames[f]] == true){
+				load_mobs_from_flags(name, false, true, flagnames[f]);
+
+			}
+		}
+	}
+	else if(day == 1){
+		size_t n_mobs =
+			geometry_file.get_child_by_name("mobs")->get_nr_of_children();
+
+		for (size_t m = 0; m < n_mobs; ++m) {
+
+			data_node* mob_node =
+				geometry_file.get_child_by_name("mobs")->get_child(m);
+
 			mob_gen* mob_ptr = new mob_gen();
-			data_node* mob_node = mobl_node->get_child(s);
-			mob_ptr->lid = m - 1;
+
 			mob_ptr->pos = s2p(mob_node->get_child_by_name("p")->value);
 			mob_ptr->angle =
 				s2f(
 					mob_node->get_child_by_name("angle")->get_value_or_default("0")
 				);
 			mob_ptr->vars = mob_node->get_child_by_name("vars")->value;
+
 			mob_ptr->category = mob_categories.get_from_name(mob_node->name);
 			if (!mob_ptr->category) continue;
 
 			string mt = mob_node->get_child_by_name("type")->value;
 			mob_ptr->type = mob_ptr->category->get_type(mt);
 
-
+			vector<string> link_strs =
+				split(mob_node->get_child_by_name("links")->value);
+			for (size_t l = 0; l < link_strs.size(); ++l) {
+				mob_links_buffer.push_back(make_pair(m, s2i(link_strs[l])));
+			}
 
 			bool problem = false;
 
@@ -305,17 +427,20 @@ void load_area(
 			if (!problem) {
 				cur_area_data.mob_generators.push_back(mob_ptr);
 			}
-
 			else {
 				delete mob_ptr;
-
 			}
-
 		}
 
+		for (size_t l = 0; l < mob_links_buffer.size(); ++l) {
+			size_t f = mob_links_buffer[l].first;
+			size_t s = mob_links_buffer[l].second;
+			cur_area_data.mob_generators[f]->links.push_back(
+				cur_area_data.mob_generators[s]
+			);
+			cur_area_data.mob_generators[f]->link_nrs.push_back(s);
+		}
 	}
-    
-
     //Path stops.
     size_t n_stops =
         geometry_file.get_child_by_name("path_stops")->get_nr_of_children();
@@ -847,7 +972,16 @@ void load_game_config() {
     pikmin_order_strings = semicolon_list_to_vector(pikmin_order_string);
     leader_order_strings = semicolon_list_to_vector(leader_order_string);
     cursor_spin_speed = deg_to_rad(cursor_spin_speed);
+	size_t flag_amounts = file.get_child_by_name("Flags")->get_nr_of_children();
+	for (size_t f = 0; f < flag_amounts; ++f) {
+		data_node* flags = file.get_child_by_name("Flags")->get_child(f);
+		flagnames.push_back(flags->name);
+		if (flags->value == "true") progressflags[flags->name] = true;
+		else progressflags[flags->name] = false;
+	}
+	day = 1;
 }
+
 
 
 /* ----------------------------------------------------------------------------
@@ -1023,10 +1157,17 @@ void load_options() {
     for(size_t h = 0; h < ANIMATION_EDITOR_HISTORY_SIZE; ++h) {
         animation_editor_history.push_back("");
     }
-    
+	
     data_node file = data_node(OPTIONS_FILE_PATH);
     if(!file.file_was_opened) return;
-    
+	string vuil;
+
+	max_players =
+		s2i(
+			file.get_child_by_name(
+				"playernumber"
+			)->value
+	);
     //Init joysticks.
     joystick_numbers.clear();
     int n_joysticks = al_get_num_joysticks();
@@ -1048,7 +1189,7 @@ void load_options() {
      * joystick stick and axis, etc.
      * Check the constructor of control_info for more information.
      */
-    for(unsigned char p = 0; p < MAX_PLAYERS; ++p) {
+    for(unsigned char p = 0; p < max_players; ++p) {
         controls[p].clear();
         for(size_t b = 0; b < N_BUTTONS; ++b) {
             string option_name = buttons.list[b].option_name;
@@ -1058,7 +1199,7 @@ void load_options() {
     }
     
     //Weed out controls that didn't parse correctly.
-    for(size_t p = 0; p < MAX_PLAYERS; p++) {
+    for(size_t p = 0; p < max_players; p++) {
         size_t n_controls = controls[p].size();
         for(size_t c = 0; c < n_controls; ) {
             if(controls[p][c].action == BUTTON_NONE) {
@@ -1069,12 +1210,12 @@ void load_options() {
         }
     }
     
-    for(unsigned char p = 0; p < MAX_PLAYERS; ++p) {
+    for(unsigned char p = 0; p < max_players; ++p) {
         mouse_moves_cursor[p] =
             s2b(
                 file.get_child_by_name(
                     "p" + i2s((p + 1)) + "_mouse_moves_cursor"
-                )->get_value_or_default((p == 0) ? "true" : "false")
+                )->value
             );
     }
     
@@ -1602,3 +1743,181 @@ void unload_status_types(const bool unload_resources) {
     }
     status_types.clear();
 }
+
+void load_day( const string &name , const bool load_for_editor, const bool from_backup, const string &day){
+if(load_for_editor == true) cur_area_data.mob_generators.clear();
+    string gen_file_name;
+	if (!from_backup) {
+		gen_file_name =
+			AREAS_FOLDER_PATH + "/" + name + "/" + day + "/this.txt";
+	} else gen_file_name =
+		USER_AREA_DATA_FOLDER_PATH + "/" + name + "/" + day + "/this_backup.txt";
+
+data_node gen_file = load_data_file(gen_file_name);
+vector<pair<size_t, size_t> > mob_links_buffer;
+    size_t n_mobs =
+        gen_file.get_child_by_name("mobs")->get_nr_of_children();
+        
+    for(size_t m = 0; m < n_mobs; ++m) {
+    
+        data_node* mob_node =
+            gen_file.get_child_by_name("mobs")->get_child(m);
+            
+        mob_gen* mob_ptr = new mob_gen();
+        
+        mob_ptr->pos = s2p(mob_node->get_child_by_name("p")->value);
+        mob_ptr->angle =
+            s2f(
+                mob_node->get_child_by_name("angle")->get_value_or_default("0")
+            );
+        mob_ptr->vars = mob_node->get_child_by_name("vars")->value;
+        
+        mob_ptr->category = mob_categories.get_from_name(mob_node->name);
+        if(!mob_ptr->category) continue;
+        
+        string mt = mob_node->get_child_by_name("type")->value;
+        mob_ptr->type = mob_ptr->category->get_type(mt);
+        vector<string> link_strs =
+            split(mob_node->get_child_by_name("links")->value);
+        for(size_t l = 0; l < link_strs.size(); ++l) {
+            mob_links_buffer.push_back(make_pair(m, s2i(link_strs[l])));
+        }
+        
+        bool problem = false;
+        
+        if(!mob_ptr->type && !load_for_editor) {
+            //Error.
+            log_error(
+                "Unknown \"" + mob_ptr->category->name +
+                "\" mob type \"" +
+                mt + "\"!",
+                mob_node
+            );
+            problem = true;
+        }
+        
+        if(
+            (
+                mob_ptr->category->id == MOB_CATEGORY_NONE ||
+                mob_ptr->category->id == INVALID
+            ) && !load_for_editor
+        ) {
+        
+            log_error(
+                "Unknown mob category \"" + mob_node->name + "\"!", mob_node
+            );
+            mob_ptr->category = mob_categories.get(MOB_CATEGORY_NONE);
+            problem = true;
+            
+        }
+        
+        if(!problem) {
+            cur_area_data.mob_generators.push_back(mob_ptr);
+        } else {
+            delete mob_ptr;
+        }
+    }
+    
+    for(size_t l = 0; l < mob_links_buffer.size(); ++l) {
+        size_t f = mob_links_buffer[l].first;
+        size_t s = mob_links_buffer[l].second;
+        cur_area_data.mob_generators[f]->links.push_back(
+            cur_area_data.mob_generators[s]
+        );
+        cur_area_data.mob_generators[f]->link_nrs.push_back(s);
+    }
+ }
+/*load mobs based on level flags*/
+void load_mobs_from_flags(const string &name, const bool load_for_editor,
+	const bool from_backup, const string &flag) {
+	if (load_for_editor == true) cur_area_data.mob_generators.clear();
+	string gen_file_name;
+	if (!from_backup) {
+		gen_file_name =
+			AREAS_FOLDER_PATH + "/" + name + "/flagdata/" + "this.txt";
+	}
+	else gen_file_name =
+	AREAS_FOLDER_PATH + "/" + name + "/flagdata_false/" + "this.txt";
+	data_node* gen_file;
+	data_node geb_file = load_data_file(gen_file_name);
+	if (geb_file.get_child_by_name(flag)->name != flag) {
+		return;
+	}
+	else gen_file = geb_file.get_child_by_name(flag);
+	vector<pair<size_t, size_t> > mob_links_buffer;
+	size_t n_mobs =
+		gen_file->get_child_by_name("mobs")->get_nr_of_children();
+
+	for (size_t m = 0; m < n_mobs; ++m) {
+
+		data_node* mob_node =
+			gen_file->get_child_by_name("mobs")->get_child(m);
+
+		mob_gen* mob_ptr = new mob_gen();
+
+		mob_ptr->pos = s2p(mob_node->get_child_by_name("p")->value);
+		mob_ptr->angle =
+			s2f(
+				mob_node->get_child_by_name("angle")->get_value_or_default("0")
+			);
+		mob_ptr->vars = mob_node->get_child_by_name("vars")->value;
+
+		mob_ptr->category = mob_categories.get_from_name(mob_node->name);
+		if (!mob_ptr->category) continue;
+
+		string mt = mob_node->get_child_by_name("type")->value;
+		mob_ptr->type = mob_ptr->category->get_type(mt);
+
+		vector<string> link_strs =
+			split(mob_node->get_child_by_name("links")->value);
+		for (size_t l = 0; l < link_strs.size(); ++l) {
+			mob_links_buffer.push_back(make_pair(m, s2i(link_strs[l])));
+		}
+
+		bool problem = false;
+
+		if (!mob_ptr->type && !load_for_editor) {
+			//Error.
+			log_error(
+				"Unknown \"" + mob_ptr->category->name +
+				"\" mob type \"" +
+				mt + "\"!",
+				mob_node
+			);
+			problem = true;
+		}
+
+		if (
+			(
+				mob_ptr->category->id == MOB_CATEGORY_NONE ||
+				mob_ptr->category->id == INVALID
+				) && !load_for_editor
+			) {
+
+			log_error(
+				"Unknown mob category \"" + mob_node->name + "\"!", mob_node
+			);
+			mob_ptr->category = mob_categories.get(MOB_CATEGORY_NONE);
+			problem = true;
+
+		}
+
+		if (!problem) {
+			cur_area_data.mob_generators.push_back(mob_ptr);
+		}
+		else {
+			delete mob_ptr;
+		}
+	}
+
+	for (size_t l = 0; l < mob_links_buffer.size(); ++l) {
+		size_t f = mob_links_buffer[l].first;
+		size_t s = mob_links_buffer[l].second;
+		cur_area_data.mob_generators[f]->links.push_back(
+			cur_area_data.mob_generators[s]
+		);
+		cur_area_data.mob_generators[f]->link_nrs.push_back(s);
+	}
+}
+void load_sectors_by_day() {}
+	
